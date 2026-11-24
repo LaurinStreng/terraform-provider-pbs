@@ -18,7 +18,7 @@ import (
 	tfjson "github.com/hashicorp/terraform-json"
 	"github.com/stretchr/testify/require"
 
-	"github.com/micah/terraform-provider-pbs/pbs/api"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 )
 
 // isDebugMode checks if PBS_DEBUG environment variable is set
@@ -136,7 +136,7 @@ func (tc *TestContext) WriteMainTF(t *testing.T, config string) {
 terraform {
   required_providers {
     pbs = {
-      source  = "registry.terraform.io/micah/pbs"
+      source  = "registry.terraform.io/laurinstreng/pbs"
       version = "1.0.0"
     }
   }
@@ -174,7 +174,7 @@ func (tc *TestContext) setupLocalProvider(t *testing.T) {
 	}
 
 	// Create plugins directory structure using the separate plugins directory
-	pluginsDir := filepath.Join(tc.Workdir, "plugins", "registry.terraform.io", "micah", "pbs", "1.0.0", runtime.GOOS+"_"+runtime.GOARCH)
+	pluginsDir := filepath.Join(tc.Workdir, "plugins", "registry.terraform.io", "laurinstreng", "pbs", "1.0.0", runtime.GOOS+"_"+runtime.GOARCH)
 	err := os.MkdirAll(pluginsDir, 0755)
 	require.NoError(t, err, "Failed to create plugins directory")
 

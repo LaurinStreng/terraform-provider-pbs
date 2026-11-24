@@ -7,7 +7,7 @@
 // Package config provides the global provider's configuration for all resources and datasources.
 package config
 
-import "github.com/micah/terraform-provider-pbs/pbs"
+import "github.com/LaurinStreng/terraform-provider-pbs/pbs"
 
 // DataSource is the global configuration for all datasources.
 type DataSource struct {

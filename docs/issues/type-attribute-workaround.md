@@ -81,7 +81,7 @@ Make sure you're using the latest version (v0.2.0):
 terraform {
   required_providers {
     pbs = {
-      source  = "registry.terraform.io/micah/pbs"
+      source  = "registry.terraform.io/laurinstreng/pbs"
       version = "~> 0.2.0"
     }
   }
@@ -151,7 +151,7 @@ If the error persists after trying these fixes:
 3. **Check the provider schema:**
    ```bash
    terraform providers schema -json | \
-     jq '.provider_schemas["registry.terraform.io/micah/pbs"].resource_schemas.pbs_datastore.block.attributes | keys'
+     jq '.provider_schemas["registry.terraform.io/laurinstreng/pbs"].resource_schemas.pbs_datastore.block.attributes | keys'
    ```
    
    This should NOT include "type" in the list. If it does, something is very wrong.

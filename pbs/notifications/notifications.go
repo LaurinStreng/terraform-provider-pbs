@@ -13,7 +13,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/micah/terraform-provider-pbs/pbs/api"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 )
 
 // Client represents the notifications API client

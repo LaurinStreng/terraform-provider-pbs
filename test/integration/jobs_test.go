@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/micah/terraform-provider-pbs/pbs/jobs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/jobs"
 )
 
 // TestPruneJobIntegration tests the complete lifecycle of a prune job

@@ -15,9 +15,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/micah/terraform-provider-pbs/fwprovider/config"
-	"github.com/micah/terraform-provider-pbs/pbs"
-	"github.com/micah/terraform-provider-pbs/pbs/notifications"
+	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/notifications"
 )
 
 // Ensure the implementation satisfies the expected interfaces.

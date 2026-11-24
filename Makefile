@@ -9,8 +9,8 @@ build:
 
 .PHONY: install
 install: build
-	mkdir -p ~/.terraform.d/plugins/registry.terraform.io/micah/pbs/${VERSION}/darwin_amd64
-	cp ${NAME} ~/.terraform.d/plugins/registry.terraform.io/micah/pbs/${VERSION}/darwin_amd64/
+	mkdir -p ~/.terraform.d/plugins/registry.terraform.io/laurinstreng/pbs/${VERSION}/darwin_amd64
+	cp ${NAME} ~/.terraform.d/plugins/registry.terraform.io/laurinstreng/pbs/${VERSION}/darwin_amd64/
 
 .PHONY: test
 test:

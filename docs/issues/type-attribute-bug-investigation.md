@@ -108,7 +108,7 @@ User might have accidentally typed `type = ...` at root level due to autocomplet
    terraform {
      required_providers {
        pbs = {
-         source  = "registry.terraform.io/micah/pbs"
+         source  = "registry.terraform.io/laurinstreng/pbs"
          version = "~> 0.2.0"  # Use latest
        }
      }
@@ -129,7 +129,7 @@ Please provide:
 2. Complete error output
 3. Provider version: `terraform providers`
 4. Terraform version: `terraform version`
-5. Output of: `terraform providers schema -json | jq '.provider_schemas["registry.terraform.io/micah/pbs"].resource_schemas.pbs_datastore.block.attributes | keys'`
+5. Output of: `terraform providers schema -json | jq '.provider_schemas["registry.terraform.io/laurinstreng/pbs"].resource_schemas.pbs_datastore.block.attributes | keys'`
 
 ## Code Verification
 

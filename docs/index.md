@@ -16,7 +16,7 @@ This provider allows you to manage Proxmox Backup Server resources using Terrafo
 terraform {
   required_providers {
     pbs = {
-      source  = "mcfitz2/pbs"
+      source  = "laurinstreng/pbs"
       version = "~> 0.1"
     }
   }

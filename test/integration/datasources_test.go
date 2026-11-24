@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/micah/terraform-provider-pbs/pbs/datastores"
-	"github.com/micah/terraform-provider-pbs/pbs/jobs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/datastores"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/jobs"
 )
 
 // TestDatastoreDataSourceIntegration tests reading a single datastore via data source

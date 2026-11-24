@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/micah/terraform-provider-pbs/pbs/api"
 )
 
 // isDebugEnabled checks if debug logging should be enabled

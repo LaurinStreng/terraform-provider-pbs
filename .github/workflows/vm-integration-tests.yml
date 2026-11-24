@@ -125,7 +125,7 @@ jobs:
     - name: Install provider for HCL tests
       run: |
         # Install provider to local plugin directory for Terraform HCL tests
-        PROVIDER_DIR="$HOME/.terraform.d/plugins/registry.terraform.io/micah/pbs/1.0.0/linux_amd64"
+        PROVIDER_DIR="$HOME/.terraform.d/plugins/registry.terraform.io/laurinstreng/pbs/1.0.0/linux_amd64"
         mkdir -p "$PROVIDER_DIR"
         cp terraform-provider-pbs "$PROVIDER_DIR/"
         chmod +x "$PROVIDER_DIR/terraform-provider-pbs"

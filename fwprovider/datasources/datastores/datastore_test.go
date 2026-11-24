@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	pbssdk "github.com/micah/terraform-provider-pbs/pbs/datastores"
+	pbssdk "github.com/LaurinStreng/terraform-provider-pbs/pbs/datastores"
 )
 
 func TestDatastoreDataSourceSchema(t *testing.T) {

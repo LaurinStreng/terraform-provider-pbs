@@ -1,7 +1,7 @@
 # Terraform Provider for Proxmox Backup Server
 
 [![License](https://img.shields.io/badge/License-MPL--2.0-blue.svg)](https://opensource.org/licenses/MPL-2.0)
-[![Go Report Card](https://goreportcard.com/badge/github.com/mcfitz2/terraform-provider-pbs)](https://goreportcard.com/report/github.com/mcfitz2/terraform-provider-pbs)
+[![Go Report Card](https://goreportcard.com/badge/github.com/LaurinStreng/terraform-provider-pbs)](https://goreportcard.com/report/github.com/LaurinStreng/terraform-provider-pbs)
 
 A Terraform provider for managing [Proxmox Backup Server](https://www.proxmox.com/en/proxmox-backup-server) resources.
 
@@ -27,7 +27,7 @@ A Terraform provider for managing [Proxmox Backup Server](https://www.proxmox.co
 terraform {
   required_providers {
     pbs = {
-      source  = "mcfitz2/pbs"
+      source  = "laurinstreng/pbs"
       version = "~> 0.1"
     }
   }
@@ -145,13 +145,13 @@ resource "pbs_datastore" "advanced" {
 - `pbs_datastore` - Manage PBS datastores
 - `pbs_s3_endpoint` - Manage S3 storage endpoints
 
-For detailed documentation on each resource and data source, see the [Terraform Registry documentation](https://registry.terraform.io/providers/mcfitz2/pbs/latest/docs).
+For detailed documentation on each resource and data source, see the [Terraform Registry documentation](https://registry.terraform.io/providers/laurinstreng/pbs/latest/docs).
 
 ## Building from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/mcfitz2/terraform-provider-pbs.git
+git clone https://github.com/LaurinStreng/terraform-provider-pbs.git
 cd terraform-provider-pbs
 
 # Build the provider
@@ -211,6 +211,6 @@ This project is licensed under the Mozilla Public License 2.0 - see the [LICENSE
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/mcfitz2/terraform-provider-pbs/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/mcfitz2/terraform-provider-pbs/discussions)
-- **Documentation**: [Terraform Registry](https://registry.terraform.io/providers/mcfitz2/pbs/latest/docs)
+- **Issues**: [GitHub Issues](https://github.com/LaurinStreng/terraform-provider-pbs/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/LaurinStreng/terraform-provider-pbs/discussions)
+- **Documentation**: [Terraform Registry](https://registry.terraform.io/providers/laurinstreng/pbs/latest/docs)

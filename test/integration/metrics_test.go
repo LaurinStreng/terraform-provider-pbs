@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/micah/terraform-provider-pbs/pbs/metrics"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/metrics"
 )
 
 // getInfluxDBHost returns the InfluxDB host from environment or default

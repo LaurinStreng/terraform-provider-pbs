@@ -8,13 +8,13 @@
 package pbs
 
 import (
-	"github.com/micah/terraform-provider-pbs/pbs/api"
-	"github.com/micah/terraform-provider-pbs/pbs/datastores"
-	"github.com/micah/terraform-provider-pbs/pbs/endpoints"
-	"github.com/micah/terraform-provider-pbs/pbs/jobs"
-	"github.com/micah/terraform-provider-pbs/pbs/metrics"
-	"github.com/micah/terraform-provider-pbs/pbs/notifications"
-	"github.com/micah/terraform-provider-pbs/pbs/remotes"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/datastores"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/endpoints"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/jobs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/metrics"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/notifications"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/remotes"
 )
 
 // Client represents the main PBS client interface

@@ -15,8 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 
-	"github.com/micah/terraform-provider-pbs/fwprovider/config"
-	"github.com/micah/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
 )
 
 // Ensure the implementation satisfies the expected interfaces.

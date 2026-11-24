@@ -158,7 +158,7 @@ Create `terraform_override.tf` in each test directory:
 terraform {
   required_providers {
     pbs = {
-      source = "registry.terraform.io/micah/pbs"
+      source = "registry.terraform.io/laurinstreng/pbs"
     }
   }
 }
@@ -173,7 +173,7 @@ And add to `~/.terraformrc`:
 ```hcl
 provider_installation {
   dev_overrides {
-    "registry.terraform.io/micah/pbs" = "/path/to/terraform-provider-pbs"
+    "registry.terraform.io/laurinstreng/pbs" = "/path/to/terraform-provider-pbs"
   }
   direct {}
 }

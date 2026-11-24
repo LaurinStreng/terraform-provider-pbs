@@ -100,7 +100,7 @@ case "$OS" in
         ;;
 esac
 
-PLUGIN_DIR="$HOME/.terraform.d/plugins/registry.terraform.io/micah/pbs/1.0.0/${OS}_${ARCH}"
+PLUGIN_DIR="$HOME/.terraform.d/plugins/registry.terraform.io/laurinstreng/pbs/1.0.0/${OS}_${ARCH}"
 mkdir -p "$PLUGIN_DIR"
 cp "$PROJECT_ROOT/terraform-provider-pbs" "$PLUGIN_DIR/"
 chmod +x "$PLUGIN_DIR/terraform-provider-pbs"

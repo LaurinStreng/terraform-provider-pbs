@@ -52,5 +52,5 @@
 - Metrics server tests rely on InfluxDB ports (8086/8089) exported via `TEST_INFLUXDB_*`; ensure new metrics resources respect those variables.
 - Notification endpoints treat `targets` as optional lists and preserve `origin` from the API—maintain those semantics during updates.
 ## Deployment
-- `make build` emits a local provider binary; `make install` copies it into `~/.terraform.d/plugins/registry.terraform.io/micah/pbs/${VERSION}/darwin_amd64/` for manual Terraform runs.
+- `make build` emits a local provider binary; `make install` copies it into `~/.terraform.d/plugins/registry.terraform.io/laurinstreng/pbs/${VERSION}/darwin_amd64/` for manual Terraform runs.
 - Release builds are managed through GoReleaser (`make release-test`), so avoid introducing extra build steps without updating the workflow.

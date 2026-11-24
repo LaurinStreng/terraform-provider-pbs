@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/micah/terraform-provider-pbs/pbs/remotes"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/remotes"
 )
 
 // TestRemotesIntegration tests the complete lifecycle of PBS remote configurations

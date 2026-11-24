@@ -24,9 +24,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
-	"github.com/micah/terraform-provider-pbs/fwprovider/config"
-	"github.com/micah/terraform-provider-pbs/pbs"
-	"github.com/micah/terraform-provider-pbs/pbs/endpoints"
+	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/endpoints"
 )
 
 // Ensure the implementation satisfies the expected interfaces.

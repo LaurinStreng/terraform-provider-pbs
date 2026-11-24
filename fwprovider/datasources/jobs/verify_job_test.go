@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	pbsjobs "github.com/micah/terraform-provider-pbs/pbs/jobs"
+	pbsjobs "github.com/LaurinStreng/terraform-provider-pbs/pbs/jobs"
 )
 
 func TestVerifyJobDataSourceSchema(t *testing.T) {
