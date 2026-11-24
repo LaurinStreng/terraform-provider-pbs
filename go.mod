@@ -3,7 +3,7 @@ module github.com/LaurinStreng/terraform-provider-pbs
 go 1.24.0
 
 require (
-	github.com/aws/aws-sdk-go v1.44.327
+	github.com/aws/aws-sdk-go v1.55.8
 	github.com/hashicorp/terraform-exec v0.24.0
 	github.com/hashicorp/terraform-json v0.27.2
 	github.com/hashicorp/terraform-plugin-framework v1.16.1
