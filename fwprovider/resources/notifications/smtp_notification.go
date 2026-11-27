@@ -25,6 +25,7 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/notifications"
 )
 
@@ -269,15 +270,8 @@ func (r *smtpNotificationResource) Create(ctx context.Context, req resource.Crea
 	// Update plan with values from API
 	plan.Server = types.StringValue(created.Server)
 	plan.From = types.StringValue(created.From)
-	if created.Port != nil {
-		plan.Port = types.Int64Value(int64(*created.Port))
-	}
-	if created.Mode != "" {
-		plan.Mode = types.StringValue(created.Mode)
-	} else if plan.Mode.IsUnknown() || plan.Mode.IsNull() {
-		// If API doesn't return mode and plan has no value, use default
-		plan.Mode = types.StringValue("insecure")
-	}
+	plan.Mode = types.StringValue(smtpModeOrDefault(created.Mode))
+	plan.Port = types.Int64Value(int64(smtpPortOrDefault(created.Port, plan.Mode.ValueString())))
 	if created.To != nil {
 		mailtoList, diags := types.ListValueFrom(ctx, types.StringType, created.To)
 		resp.Diagnostics.Append(diags...)
@@ -316,7 +310,7 @@ func (r *smtpNotificationResource) Create(ctx context.Context, req resource.Crea
 	if created.Disable != nil {
 		plan.Disable = types.BoolValue(*created.Disable)
 	} else {
-		plan.Disable = types.BoolNull()
+		plan.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 	if created.Origin != "" {
 		plan.Origin = types.StringValue(created.Origin)
@@ -340,6 +334,11 @@ func (r *smtpNotificationResource) Read(ctx context.Context, req resource.ReadRe
 	// Get SMTP target from API
 	target, err := r.client.Notifications.GetSMTPTarget(ctx, state.Name.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Error reading SMTP notification target",
 			fmt.Sprintf("Could not read SMTP notification target %s: %s", state.Name.ValueString(), err.Error()),
@@ -351,14 +350,8 @@ func (r *smtpNotificationResource) Read(ctx context.Context, req resource.ReadRe
 	state.Server = types.StringValue(target.Server)
 	state.From = types.StringValue(target.From)
 
-	if target.Port != nil {
-		state.Port = types.Int64Value(int64(*target.Port))
-	}
-	if target.Mode != "" {
-		state.Mode = types.StringValue(target.Mode)
-	} else {
-		state.Mode = types.StringNull()
-	}
+	state.Mode = types.StringValue(smtpModeOrDefault(target.Mode))
+	state.Port = types.Int64Value(int64(smtpPortOrDefault(target.Port, state.Mode.ValueString())))
 	if target.To != nil {
 		mailtoList, diags := types.ListValueFrom(ctx, types.StringType, target.To)
 		resp.Diagnostics.Append(diags...)
@@ -398,7 +391,7 @@ func (r *smtpNotificationResource) Read(ctx context.Context, req resource.ReadRe
 	if target.Disable != nil {
 		state.Disable = types.BoolValue(*target.Disable)
 	} else {
-		state.Disable = types.BoolNull()
+		state.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 	if target.Origin != "" {
 		state.Origin = types.StringValue(target.Origin)
@@ -468,6 +461,12 @@ func (r *smtpNotificationResource) Update(ctx context.Context, req resource.Upda
 		disable := plan.Disable.ValueBool()
 		target.Disable = &disable
 	}
+	target.Delete = deleteIfNull(target.Delete, plan.Mailto, "mailto")
+	target.Delete = deleteIfNull(target.Delete, plan.MailtoUser, "mailto-user")
+	target.Delete = deleteIfNull(target.Delete, plan.Username, "username")
+	target.Delete = deleteIfNull(target.Delete, plan.Password, "password")
+	target.Delete = deleteIfNull(target.Delete, plan.Author, "author")
+	target.Delete = deleteIfNull(target.Delete, plan.Comment, "comment")
 
 	err := r.client.Notifications.UpdateSMTPTarget(ctx, plan.Name.ValueString(), target)
 	if err != nil {
@@ -490,14 +489,8 @@ func (r *smtpNotificationResource) Update(ctx context.Context, req resource.Upda
 	plan.Server = types.StringValue(updated.Server)
 	plan.From = types.StringValue(updated.From)
 
-	if updated.Port != nil {
-		plan.Port = types.Int64Value(int64(*updated.Port))
-	}
-	if updated.Mode != "" {
-		plan.Mode = types.StringValue(updated.Mode)
-	} else {
-		plan.Mode = types.StringNull()
-	}
+	plan.Mode = types.StringValue(smtpModeOrDefault(updated.Mode))
+	plan.Port = types.Int64Value(int64(smtpPortOrDefault(updated.Port, plan.Mode.ValueString())))
 
 	if updated.To != nil {
 		mailtoList, diags := types.ListValueFrom(ctx, types.StringType, updated.To)
@@ -539,7 +532,7 @@ func (r *smtpNotificationResource) Update(ctx context.Context, req resource.Upda
 	if updated.Disable != nil {
 		plan.Disable = types.BoolValue(*updated.Disable)
 	} else {
-		plan.Disable = types.BoolNull()
+		plan.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 	if updated.Origin != "" {
 		plan.Origin = types.StringValue(updated.Origin)
@@ -561,7 +554,7 @@ func (r *smtpNotificationResource) Delete(ctx context.Context, req resource.Dele
 
 	// Delete SMTP target via API
 	err := r.client.Notifications.DeleteSMTPTarget(ctx, state.Name.ValueString())
-	if err != nil {
+	if err != nil && !api.IsNotFound(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting SMTP notification target",
 			fmt.Sprintf("Could not delete SMTP notification target %s: %s", state.Name.ValueString(), err.Error()),
@@ -573,4 +566,29 @@ func (r *smtpNotificationResource) Delete(ctx context.Context, req resource.Dele
 // ImportState imports the resource state.
 func (r *smtpNotificationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+}
+
+// smtpModeOrDefault maps an omitted mode to the PBS default ("tls").
+func smtpModeOrDefault(mode string) string {
+	if mode == "" {
+		return "tls"
+	}
+
+	return mode
+}
+
+// smtpPortOrDefault maps an omitted port to the PBS default for the given mode.
+func smtpPortOrDefault(port *int, mode string) int {
+	if port != nil {
+		return *port
+	}
+
+	switch mode {
+	case "insecure":
+		return 25
+	case "starttls":
+		return 587
+	default:
+		return 465
+	}
 }

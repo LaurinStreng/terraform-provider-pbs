@@ -127,8 +127,8 @@ func (d *pruneJobsDataSource) Schema(_ context.Context, _ datasource.SchemaReque
 							Computed:            true,
 						},
 						"digest": schema.StringAttribute{
-							Description:         "Opaque digest returned by PBS.",
-							MarkdownDescription: "Opaque digest returned by PBS.",
+							Description:         "SHA-256 digest of the PBS configuration file the object is stored in (shared by all objects in that file; informational only).",
+							MarkdownDescription: "SHA-256 digest of the PBS configuration file the object is stored in (shared by all objects in that file; informational only).",
 							Computed:            true,
 						},
 					},

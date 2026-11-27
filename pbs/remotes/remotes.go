@@ -41,15 +41,11 @@ type Remote struct {
 
 // RemoteDatastore represents a datastore on a remote PBS server
 type RemoteDatastore struct {
-	Name        string              `json:"name"`
-	Comment     string              `json:"comment,omitempty"`
-	Maintenance *MaintenanceInfo    `json:"maintenance,omitempty"`
-}
-
-// MaintenanceInfo represents datastore maintenance status
-type MaintenanceInfo struct {
-	Type    string `json:"type"`
-	Message string `json:"message,omitempty"`
+	Name    string `json:"store"`
+	Comment string `json:"comment,omitempty"`
+	// Maintenance is the raw maintenance-mode property string as returned by
+	// PBS (e.g. "type=read-only,message=..."); empty when not in maintenance.
+	Maintenance string `json:"maintenance,omitempty"`
 }
 
 // RemoteNamespace represents a namespace on a remote datastore
@@ -97,6 +93,10 @@ func (c *Client) GetRemote(ctx context.Context, name string) (*Remote, error) {
 		return nil, fmt.Errorf("failed to unmarshal remote %s: %w", name, err)
 	}
 
+	if remote.Digest == "" {
+		remote.Digest = resp.Digest
+	}
+
 	return &remote, nil
 }
 
@@ -117,9 +117,9 @@ func (c *Client) CreateRemote(ctx context.Context, remote *Remote) error {
 
 	// Convert struct to map for API request
 	body := map[string]interface{}{
-		"name":    remote.Name,
-		"host":    remote.Host,
-		"auth-id": remote.AuthID,
+		"name":     remote.Name,
+		"host":     remote.Host,
+		"auth-id":  remote.AuthID,
 		"password": remote.Password,
 	}
 
@@ -171,11 +171,6 @@ func (c *Client) UpdateRemote(ctx context.Context, name string, remote *Remote) 
 		body["comment"] = remote.Comment
 	}
 
-	// Include digest for optimistic locking
-	if remote.Digest != "" {
-		body["digest"] = remote.Digest
-	}
-
 	// Include delete array for clearing optional fields
 	if len(remote.Delete) > 0 {
 		body["delete"] = remote.Delete
@@ -191,17 +186,12 @@ func (c *Client) UpdateRemote(ctx context.Context, name string, remote *Remote) 
 }
 
 // DeleteRemote deletes a remote configuration
-func (c *Client) DeleteRemote(ctx context.Context, name string, digest string) error {
+func (c *Client) DeleteRemote(ctx context.Context, name string) error {
 	if name == "" {
 		return fmt.Errorf("remote name is required")
 	}
 
 	path := fmt.Sprintf("/config/remote/%s", url.PathEscape(name))
-	
-	// Include digest as query parameter if provided
-	if digest != "" {
-		path = fmt.Sprintf("%s?digest=%s", path, url.QueryEscape(digest))
-	}
 
 	_, err := c.api.Delete(ctx, path)
 	if err != nil {
@@ -264,7 +254,7 @@ func (c *Client) ListRemoteGroups(ctx context.Context, name string, store string
 	}
 
 	path := fmt.Sprintf("/config/remote/%s/scan/%s/groups", url.PathEscape(name), url.PathEscape(store))
-	
+
 	// Add namespace as query parameter if provided
 	if namespace != "" {
 		path = fmt.Sprintf("%s?namespace=%s", path, url.QueryEscape(namespace))

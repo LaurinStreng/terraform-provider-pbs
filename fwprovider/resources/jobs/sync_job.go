@@ -27,13 +27,15 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/jobs"
 )
 
 var (
-	_ resource.Resource                = &syncJobResource{}
-	_ resource.ResourceWithConfigure   = &syncJobResource{}
-	_ resource.ResourceWithImportState = &syncJobResource{}
+	_ resource.Resource                   = &syncJobResource{}
+	_ resource.ResourceWithConfigure      = &syncJobResource{}
+	_ resource.ResourceWithImportState    = &syncJobResource{}
+	_ resource.ResourceWithValidateConfig = &syncJobResource{}
 )
 
 var groupFilterRegex = regexp.MustCompile(`^(?:group:[^\s]+|type:(?:vm|ct|host)|regex:.+)$`)
@@ -87,7 +89,9 @@ func (r *syncJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 		MarkdownDescription: `Manages a PBS sync job.
 
 Sync jobs pull backups from a remote PBS server to the local datastore, enabling off-site 
-backup replication. You can filter which backup groups to sync and control bandwidth usage 
+backup replication. Omit ` + "`remote`" + ` to create a local sync job that copies backups from 
+another datastore on the same PBS (` + "`remote_store`" + ` is then the local source datastore; 
+requires PBS 3.3 or later). You can filter which backup groups to sync and control bandwidth usage 
 with rate limiting. The ` + "`remove_vanished`" + ` option keeps the local copy synchronized 
 by removing backups that no longer exist on the remote.`,
 		Attributes: map[string]schema.Attribute{
@@ -110,13 +114,13 @@ by removing backups that no longer exist on the remote.`,
 				Required:            true,
 			},
 			"remote": schema.StringAttribute{
-				Description:         "The remote server name (configured in PBS remotes).",
-				MarkdownDescription: "The remote server name (configured in PBS remotes).",
-				Required:            true,
+				Description:         "The remote server name (configured in PBS remotes). Omit for a local sync job between two datastores on this PBS.",
+				MarkdownDescription: "The remote server name (configured in PBS remotes). Omit for a local sync job that syncs between two datastores on the same PBS (requires PBS 3.3 or later). Required when `sync_direction` is `push`.",
+				Optional:            true,
 			},
 			"remote_store": schema.StringAttribute{
-				Description:         "The datastore name on the remote server.",
-				MarkdownDescription: "The datastore name on the remote server.",
+				Description:         "The datastore name on the remote server, or the local source datastore for a local sync job.",
+				MarkdownDescription: "The datastore name on the remote server. For a local sync job (no `remote`), this is the local source datastore and must differ from `store`.",
 				Required:            true,
 			},
 			"remote_namespace": schema.StringAttribute{
@@ -231,11 +235,30 @@ by removing backups that no longer exist on the remote.`,
 				Description:         "Opaque digest returned by PBS for optimistic locking.",
 				MarkdownDescription: "Opaque digest returned by PBS for optimistic locking.",
 				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 		},
+	}
+}
+
+// ValidateConfig rejects push sync jobs without a remote: PBS only fails them
+// with an unhelpful "permission check failed".
+func (r *syncJobResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config syncJobResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if config.SyncDirection.IsUnknown() || config.SyncDirection.ValueString() != "push" {
+		return
+	}
+
+	if config.Remote.IsNull() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("remote"),
+			"Missing remote for push sync job",
+			"A sync job with sync_direction = \"push\" requires a remote; local sync jobs (without remote) can only pull.",
+		)
 	}
 }
 
@@ -288,7 +311,9 @@ func (r *syncJobResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	var state syncJobResourceModel
+	// Start from the plan so user-supplied spellings of equivalent values
+	// (e.g. "10MiB" vs "10M") are preserved.
+	state := plan
 	resp.Diagnostics.Append(setSyncStateFromAPI(ctx, createdJob, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -307,6 +332,11 @@ func (r *syncJobResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 	job, err := r.client.Jobs.GetSyncJob(ctx, state.ID.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Error reading sync job",
 			fmt.Sprintf("Could not read sync job %s: %s", state.ID.ValueString(), err.Error()),
@@ -336,10 +366,6 @@ func (r *syncJobResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	if (plan.Digest.IsNull() || plan.Digest.IsUnknown()) && !state.Digest.IsNull() && !state.Digest.IsUnknown() {
-		plan.Digest = state.Digest
-	}
-
 	job, diags := buildSyncJobFromPlan(ctx, &plan)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -365,12 +391,12 @@ func (r *syncJobResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	resp.Diagnostics.Append(setSyncStateFromAPI(ctx, updatedJob, &state)...)
+	resp.Diagnostics.Append(setSyncStateFromAPI(ctx, updatedJob, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 // Delete deletes the resource and removes the Terraform state on success.
@@ -381,12 +407,11 @@ func (r *syncJobResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	digest := ""
-	if !state.Digest.IsNull() && !state.Digest.IsUnknown() {
-		digest = state.Digest.ValueString()
-	}
+	if err := r.client.Jobs.DeleteSyncJob(ctx, state.ID.ValueString()); err != nil {
+		if api.IsNotFound(err) {
+			return
+		}
 
-	if err := r.client.Jobs.DeleteSyncJob(ctx, state.ID.ValueString(), digest); err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting sync job",
 			fmt.Sprintf("Could not delete sync job %s: %s", state.ID.ValueString(), err.Error()),
@@ -456,10 +481,6 @@ func buildSyncJobFromPlan(ctx context.Context, plan *syncJobResourceModel) (*job
 		job.GroupFilter = filters
 	}
 
-	if !plan.Digest.IsNull() && !plan.Digest.IsUnknown() {
-		job.Digest = plan.Digest.ValueString()
-	}
-
 	return job, diags
 }
 
@@ -470,6 +491,10 @@ func computeSyncDeletes(plan, state *syncJobResourceModel) []string {
 
 	var deletes []string
 
+	// Clearing the remote turns the job into a local sync job.
+	if shouldDeleteStringAttr(plan.Remote, state.Remote) {
+		deletes = append(deletes, "remote")
+	}
 	if shouldDeleteStringAttr(plan.RemoteNamespace, state.RemoteNamespace) {
 		deletes = append(deletes, "remote-ns")
 	}
@@ -554,7 +579,7 @@ func setSyncStateFromAPI(ctx context.Context, job *jobs.SyncJob, state *syncJobR
 	state.ID = types.StringValue(job.ID)
 	state.Store = types.StringValue(job.Store)
 	state.Schedule = types.StringValue(job.Schedule)
-	state.Remote = types.StringValue(job.Remote)
+	state.Remote = stringValueOrNull(job.Remote)
 	state.RemoteStore = types.StringValue(job.RemoteStore)
 	state.RemoteNamespace = stringValueOrNull(job.RemoteNamespace)
 	state.Namespace = stringValueOrNull(job.Namespace)
@@ -599,12 +624,28 @@ func setSyncStateFromAPI(ctx context.Context, job *jobs.SyncJob, state *syncJobR
 	state.TransferLast = int64ValueOrNull(job.TransferLast)
 	state.SyncDirection = stringValueOrNull(job.SyncDirection)
 	state.Owner = stringValueOrNull(job.Owner)
-	state.RateIn = stringValueOrNull(normalizeRateString(job.RateIn))
-	state.RateOut = stringValueOrNull(normalizeRateString(job.RateOut))
-	state.BurstIn = stringValueOrNull(normalizeRateString(job.BurstIn))
-	state.BurstOut = stringValueOrNull(normalizeRateString(job.BurstOut))
+	state.RateIn = rateValue(state.RateIn, job.RateIn)
+	state.RateOut = rateValue(state.RateOut, job.RateOut)
+	state.BurstIn = rateValue(state.BurstIn, job.BurstIn)
+	state.BurstOut = rateValue(state.BurstOut, job.BurstOut)
 	state.Comment = stringValueOrNull(job.Comment)
 	state.Digest = stringValueOrNull(job.Digest)
 
 	return diags
+}
+
+// rateValue maps a rate/burst value returned by PBS (e.g. "10 MiB") to state.
+// If the prior value is an equivalent spelling (e.g. "10MiB" or "10M"), it is
+// kept so Terraform does not report an inconsistent result or a diff.
+func rateValue(prior types.String, apiValue string) types.String {
+	normalized := normalizeRateString(apiValue)
+	if normalized == "" {
+		return types.StringNull()
+	}
+
+	if !prior.IsNull() && !prior.IsUnknown() && normalizeRateString(prior.ValueString()) == normalized {
+		return prior
+	}
+
+	return types.StringValue(normalized)
 }

@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+#
+# Run acceptance tests against a real Proxmox Backup Server.
+#
+# Usage:
+#   ./testacc                               # all acceptance tests
+#   ./testacc TestAccResourceDatastore      # tests matching a name/regex (anchored with ^)
+#   ./testacc --tier light                  # tiers: light, medium, heavy, all (comma-separated)
+#   ./testacc --resource datastore,metrics  # tests annotated with these resources
+#   ./testacc --list                        # list annotated tests and exit
+#   ./testacc TestAccX -- -count 2          # pass extra flags to go test after --
+#
+# Tests declare their tier and resource with comments directly above the func:
+#   //testacc:tier=light
+#   //testacc:resource=datastore
+#
+# Configuration is read from ./testacc.env (see testacc.env.example).
+
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+usage() {
+  sed -n '3,17p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+PATTERN=""
+TIERS="all"
+RESOURCES=""
+LIST=0
+EXTRA=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --tier) TIERS="$2"; shift 2 ;;
+    --tier=*) TIERS="${1#*=}"; shift ;;
+    --resource) RESOURCES="$2"; shift 2 ;;
+    --resource=*) RESOURCES="${1#*=}"; shift ;;
+    --list) LIST=1; shift ;;
+    -h|--help) usage 0 ;;
+    --) shift; EXTRA=("$@"); break ;;
+    -*) echo "unknown flag: $1" >&2; usage 1 ;;
+    *) PATTERN="$1"; shift ;;
+  esac
+done
+
+# Collect "<dir> <TestName> <tier> <resources>" for every TestAcc* function.
+collect() {
+  find . -name '*_test.go' -not -path './.git/*' -not -path './vendor/*' -print0 |
+    xargs -0 awk '
+      FNR == 1 { tier = ""; res = "" }
+      /^\/\/testacc:tier=/     { sub(/^\/\/testacc:tier=/, ""); tier = $0; next }
+      /^\/\/testacc:resource=/ { sub(/^\/\/testacc:resource=/, ""); res = $0; next }
+      /^func TestAcc[A-Za-z0-9_]*\(/ {
+        name = $2; sub(/\(.*/, "", name)
+        dir = FILENAME; sub(/\/[^\/]*$/, "", dir)
+        printf "%s %s %s %s\n", dir, name, (tier == "" ? "untagged" : tier), (res == "" ? "-" : res)
+        tier = ""; res = ""; next
+      }
+      /^func / { tier = ""; res = "" }
+    ' | sort
+}
+
+TESTS="$(collect)"
+
+if [[ $LIST -eq 1 ]]; then
+  printf '%-45s %-8s %-15s %s\n' TEST TIER RESOURCE PACKAGE
+  echo "$TESTS" | awk '{ printf "%-45s %-8s %-15s %s\n", $2, $3, $4, $1 }'
+  exit 0
+fi
+
+if echo "$TESTS" | grep -q ' untagged '; then
+  echo "WARNING: acceptance tests without //testacc:tier annotation:" >&2
+  echo "$TESTS" | awk '$3 == "untagged" { print "  " $2 }' >&2
+fi
+
+if [[ -f testacc.env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source testacc.env
+  set +a
+else
+  echo "WARNING: testacc.env not found; relying on the current environment" >&2
+fi
+
+: "${PBS_ENDPOINT:?PBS_ENDPOINT must be set (see testacc.env.example)}"
+export TF_ACC=1
+export PBS_DESTROY_DATA_ON_DELETE="${PBS_DESTROY_DATA_ON_DELETE:-true}"
+
+if [[ "$TIERS" == "all" ]]; then
+  TIERS="light,medium,heavy"
+fi
+
+parallelism() {
+  case "$1" in
+    light) echo 8 ;;
+    medium) echo 4 ;;
+    *) echo 1 ;;
+  esac
+}
+
+status=0
+ran=0
+
+for tier in ${TIERS//,/ }; do
+  selected="$(echo "$TESTS" | awk -v tier="$tier" -v res="$RESOURCES" -v pat="$PATTERN" '
+    BEGIN { n = split(res, want, ",") }
+    $3 != tier { next }
+    pat != "" && $2 !~ ("^(" pat ")") { next }
+    n > 0 {
+      split($4, have, ",")
+      ok = 0
+      for (i in want) for (j in have) if (want[i] == have[j]) ok = 1
+      if (!ok) next
+    }
+    { print }
+  ')"
+
+  [[ -z "$selected" ]] && continue
+
+  names="$(echo "$selected" | awk '{ print $2 }' | sort -u | paste -sd '|' -)"
+  pkgs=()
+  while IFS= read -r pkg; do pkgs+=("$pkg"); done < <(echo "$selected" | awk '{ print $1 }' | sort -u)
+
+  echo "==> tier=$tier: $(echo "$selected" | wc -l) test(s)"
+  ran=1
+
+  go test "${pkgs[@]}" -run "^(${names})$" -count=1 -v -timeout 60m \
+    -p "$(parallelism "$tier")" "${EXTRA[@]}" || status=$?
+done
+
+if [[ $ran -eq 0 ]]; then
+  echo "No acceptance tests matched (pattern='${PATTERN}', tier='${TIERS}', resource='${RESOURCES}')." >&2
+  exit 1
+fi
+
+exit $status

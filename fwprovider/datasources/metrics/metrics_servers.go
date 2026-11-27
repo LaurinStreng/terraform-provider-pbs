@@ -175,29 +175,10 @@ func (d *metricsServersDataSource) Read(ctx context.Context, req datasource.Read
 	// Map API response to state
 	state.Servers = make([]metricsServerModel, 0, len(serversList))
 	for _, srv := range serversList {
-		server := metricsServerModel{
-			Name:    types.StringValue(srv.Name),
-			Type:    types.StringValue(string(srv.Type)),
-			Comment: stringValueOrNull(srv.Comment),
-			Enable:  boolValueOrNull(srv.Enable),
-			URL:     stringValueOrNull(srv.URL),
-			Server:  stringValueOrNull(srv.Server),
-		}
+		var server metricsServerDataSourceModel
+		metricsServerToState(&srv, &server)
 
-		if srv.Port > 0 {
-			server.Port = types.Int64Value(int64(srv.Port))
-		} else {
-			server.Port = types.Int64Null()
-		}
-
-		// Type-specific fields
-		server.MTU = intValueOrNull(srv.MTU)
-		server.Organization = stringValueOrNull(srv.Organization)
-		server.Bucket = stringValueOrNull(srv.Bucket)
-		server.MaxBodySize = intValueOrNull(srv.MaxBodySize)
-		server.VerifyTLS = boolValueOrNull(srv.VerifyTLS)
-
-		state.Servers = append(state.Servers, server)
+		state.Servers = append(state.Servers, metricsServerModel(server))
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)

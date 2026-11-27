@@ -16,13 +16,15 @@ install: build
 test:
 	go test ./...
 
-.PHONY: test-unit
-test-unit:
-	go test ./...
-
+# Acceptance tests: see ./testacc --help and CLAUDE.md
 .PHONY: testacc
 testacc:
-	TF_ACC=1 go test ./fwprovider/... -v
+	./testacc
+
+.PHONY: testacc-env
+testacc-env:
+	docker compose up -d
+	@test -f testacc.env || cp testacc.env.example testacc.env
 
 .PHONY: lint
 lint:
@@ -39,7 +41,7 @@ clean:
 
 .PHONY: docs
 docs:
-	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
+	go tool tfplugindocs generate --provider-name pbs
 
 .PHONY: release-test
 release-test:
@@ -60,7 +62,8 @@ help:
 	@echo "  build         - Build the provider binary"
 	@echo "  install       - Build and install the provider locally"
 	@echo "  test          - Run unit tests"
-	@echo "  testacc       - Run acceptance tests"
+	@echo "  testacc       - Run acceptance tests (./testacc, needs testacc.env)"
+	@echo "  testacc-env   - Start local PBS test stack via docker compose"
 	@echo "  lint          - Run linter"
 	@echo "  fmt           - Format code"
 	@echo "  clean         - Remove built binaries"

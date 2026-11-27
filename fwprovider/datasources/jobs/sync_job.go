@@ -76,13 +76,13 @@ func (d *syncJobDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 				Computed:            true,
 			},
 			"remote": schema.StringAttribute{
-				Description:         "The remote server name.",
-				MarkdownDescription: "The remote server name.",
+				Description:         "The remote server name; null for local sync jobs.",
+				MarkdownDescription: "The remote server name; null for local sync jobs (datastore to datastore on the same PBS).",
 				Computed:            true,
 			},
 			"remote_store": schema.StringAttribute{
-				Description:         "The remote datastore name.",
-				MarkdownDescription: "The remote datastore name.",
+				Description:         "The remote datastore name, or the local source datastore for local sync jobs.",
+				MarkdownDescription: "The remote datastore name, or the local source datastore for local sync jobs.",
 				Computed:            true,
 			},
 			"remote_namespace": schema.StringAttribute{
@@ -165,14 +165,14 @@ func (d *syncJobDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	state.ID = types.StringValue(job.ID)
 	state.Store = types.StringValue(job.Store)
 	state.Schedule = types.StringValue(job.Schedule)
-	state.Remote = types.StringValue(job.Remote)
+	state.Remote = stringToValue(job.Remote)
 	state.RemoteStore = types.StringValue(job.RemoteStore)
 	state.RemoteNamespace = stringToValue(job.RemoteNamespace)
 	state.Namespace = stringToValue(job.Namespace)
 	state.MaxDepth = intPtrToValue(job.MaxDepth)
 	state.RemoveVanished = boolPtrToValue(job.RemoveVanished)
 	state.Comment = stringToValue(job.Comment)
-	state.Digest = types.StringValue(job.Digest)
+	state.Digest = stringToValue(job.Digest)
 
 	// Convert group filter
 	if len(job.GroupFilter) > 0 {

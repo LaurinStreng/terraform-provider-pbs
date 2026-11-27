@@ -4,7 +4,7 @@ resource "pbs_remote" "backup_server" {
   host     = "backup.example.com"
   port     = 8007
   auth_id  = "sync@pbs!backup-token"
-  password = "abcd1234-5678-90ef-ghij-klmnopqrstuv"
+  password = var.backup_token_secret # API token secret
   
   # Optional: X509 certificate fingerprint for TLS verification
   fingerprint = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
@@ -29,4 +29,19 @@ resource "pbs_remote" "local_pbs" {
   host     = "pbs.local"
   auth_id  = "sync@pbs!sync-token"
   password = var.sync_password
+}
+
+variable "backup_token_secret" {
+  type      = string
+  sensitive = true
+}
+
+variable "offsite_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "sync_password" {
+  type      = string
+  sensitive = true
 }

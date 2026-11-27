@@ -14,13 +14,6 @@ func stringValueOrNull(value string) types.String {
 	return types.StringValue(value)
 }
 
-func boolValueOrNull(value *bool) types.Bool {
-	if value == nil {
-		return types.BoolNull()
-	}
-	return types.BoolValue(*value)
-}
-
 func int64ValueOrNull(value *int) types.Int64 {
 	if value == nil {
 		return types.Int64Null()
@@ -41,14 +34,6 @@ func boolPointerFromAttr(attr types.Bool) *bool {
 		return nil
 	}
 	v := attr.ValueBool()
-	return &v
-}
-
-func stringPointerFromAttr(attr types.String) *string {
-	if attr.IsNull() || attr.IsUnknown() {
-		return nil
-	}
-	v := attr.ValueString()
 	return &v
 }
 

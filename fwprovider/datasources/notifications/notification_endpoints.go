@@ -225,7 +225,7 @@ func (d *notificationEndpointsDataSource) Read(ctx context.Context, req datasour
 		endpoint := notificationEndpointModel{
 			Name:       types.StringValue(target.Name),
 			Type:       types.StringValue(string(notifications.NotificationTargetTypeGotify)),
-			Disable:    boolValueOrNull(target.Disable),
+			Disable:    boolValueOrFalse(target.Disable),
 			Comment:    stringValueOrNull(target.Comment),
 			Origin:     stringValueOrNull(target.Origin),
 			URL:        stringValueOrNull(target.Server),
@@ -249,13 +249,13 @@ func (d *notificationEndpointsDataSource) Read(ctx context.Context, req datasour
 		endpoint := notificationEndpointModel{
 			Name:     types.StringValue(target.Name),
 			Type:     types.StringValue(string(notifications.NotificationTargetTypeSMTP)),
-			Disable:  boolValueOrNull(target.Disable),
+			Disable:  boolValueOrFalse(target.Disable),
 			Comment:  stringValueOrNull(target.Comment),
 			Origin:   stringValueOrNull(target.Origin),
 			Server:   stringValueOrNull(target.Server),
-			Port:     intValueOrNull(target.Port),
+			Port:     types.Int64Value(int64(smtpPortOrDefault(target.Port, target.Mode))),
 			From:     stringValueOrNull(target.From),
-			Mode:     stringValueOrNull(target.Mode),
+			Mode:     stringValueOrDefault(target.Mode, "tls"),
 			Username: stringValueOrNull(target.Username),
 			Author:   stringValueOrNull(target.Author),
 			Headers:  types.MapNull(types.StringType), // Not applicable for SMTP
@@ -293,7 +293,7 @@ func (d *notificationEndpointsDataSource) Read(ctx context.Context, req datasour
 		endpoint := notificationEndpointModel{
 			Name:    types.StringValue(target.Name),
 			Type:    types.StringValue(string(notifications.NotificationTargetTypeSendmail)),
-			Disable: boolValueOrNull(target.Disable),
+			Disable: boolValueOrFalse(target.Disable),
 			Comment: stringValueOrNull(target.Comment),
 			Origin:  stringValueOrNull(target.Origin),
 			From:    stringValueOrNull(target.From),
@@ -333,7 +333,7 @@ func (d *notificationEndpointsDataSource) Read(ctx context.Context, req datasour
 		endpoint := notificationEndpointModel{
 			Name:       types.StringValue(target.Name),
 			Type:       types.StringValue(string(notifications.NotificationTargetTypeWebhook)),
-			Disable:    boolValueOrNull(target.Disable),
+			Disable:    boolValueOrFalse(target.Disable),
 			Comment:    stringValueOrNull(target.Comment),
 			Origin:     stringValueOrNull(target.Origin),
 			URL:        stringValueOrNull(target.URL),
@@ -343,7 +343,7 @@ func (d *notificationEndpointsDataSource) Read(ctx context.Context, req datasour
 			MailtoUser: types.ListNull(types.StringType), // Not applicable for Webhook
 		}
 
-		if target.Headers != nil && len(target.Headers) > 0 {
+		if len(target.Headers) > 0 {
 			headers, d := types.MapValueFrom(ctx, types.StringType, target.Headers)
 			resp.Diagnostics.Append(d...)
 			endpoint.Headers = headers

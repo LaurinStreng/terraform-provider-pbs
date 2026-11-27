@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/notifications"
 )
 
@@ -51,7 +53,7 @@ type webhookNotificationResourceModel struct {
 	Body    types.String `tfsdk:"body"`
 	Method  types.String `tfsdk:"method"`
 	Headers types.Map    `tfsdk:"headers"`
-	Secret  types.String `tfsdk:"secret"`
+	Secret  types.Map    `tfsdk:"secret"`
 	Comment types.String `tfsdk:"comment"`
 	Disable types.Bool   `tfsdk:"disable"`
 	Origin  types.String `tfsdk:"origin"`
@@ -105,11 +107,16 @@ verification tasks, and system events.`,
 				Optional:            true,
 				ElementType:         types.StringType,
 			},
-			"secret": schema.StringAttribute{
-				Description:         "Secret for HMAC signature.",
-				MarkdownDescription: "Secret for HMAC-SHA256 signature. The signature will be sent in the `X-PBS-Signature` header.",
-				Optional:            true,
-				Sensitive:           true,
+			"secret": schema.MapAttribute{
+				Description: "Named secrets that can be referenced in the body and header templates as {{ secrets.<name> }}.",
+				MarkdownDescription: "Named secrets that can be referenced in the `body` and `headers` templates as " +
+					"`{{ secrets.<name> }}`, e.g. `secret = { token = var.webhook_token }` used as " +
+					"`{{ secrets.token }}`. PBS stores the values protected and never returns them, so changes made " +
+					"to secret values outside Terraform cannot be detected (added or removed secret names are). " +
+					"Secret values cannot be imported.",
+				ElementType: types.StringType,
+				Optional:    true,
+				Sensitive:   true,
 			},
 			"comment": schema.StringAttribute{
 				Description:         "A comment describing this notification target.",
@@ -181,7 +188,13 @@ func (r *webhookNotificationResource) Create(ctx context.Context, req resource.C
 		target.Headers = headers
 	}
 	if !plan.Secret.IsNull() {
-		target.Secret = plan.Secret.ValueString()
+		secrets := make(map[string]string)
+		diags = plan.Secret.ElementsAs(ctx, &secrets, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		target.Secrets = secrets
 	}
 	if !plan.Comment.IsNull() {
 		target.Comment = plan.Comment.ValueString()
@@ -234,6 +247,8 @@ func (r *webhookNotificationResource) Create(ctx context.Context, req resource.C
 		plan.Headers = types.MapNull(types.StringType)
 	}
 
+	plan.Secret = reconcileWebhookSecrets(plan.Secret, created.SecretNames)
+
 	if created.Comment != "" {
 		plan.Comment = types.StringValue(created.Comment)
 	} else {
@@ -243,7 +258,7 @@ func (r *webhookNotificationResource) Create(ctx context.Context, req resource.C
 	if created.Disable != nil {
 		plan.Disable = types.BoolValue(*created.Disable)
 	} else {
-		plan.Disable = types.BoolNull()
+		plan.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 
 	if created.Origin != "" {
@@ -266,6 +281,11 @@ func (r *webhookNotificationResource) Read(ctx context.Context, req resource.Rea
 
 	target, err := r.client.Notifications.GetWebhookTarget(ctx, state.Name.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Error reading Webhook notification target",
 			fmt.Sprintf("Could not read Webhook notification target %s: %s", state.Name.ValueString(), err.Error()),
@@ -294,7 +314,7 @@ func (r *webhookNotificationResource) Read(ctx context.Context, req resource.Rea
 	} else {
 		state.Headers = types.MapNull(types.StringType)
 	}
-	// Don't update secret from API (sensitive field)
+	state.Secret = reconcileWebhookSecrets(state.Secret, target.SecretNames)
 	if target.Comment != "" {
 		state.Comment = types.StringValue(target.Comment)
 	} else {
@@ -303,7 +323,7 @@ func (r *webhookNotificationResource) Read(ctx context.Context, req resource.Rea
 	if target.Disable != nil {
 		state.Disable = types.BoolValue(*target.Disable)
 	} else {
-		state.Disable = types.BoolNull()
+		state.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 
 	if target.Origin != "" {
@@ -346,7 +366,13 @@ func (r *webhookNotificationResource) Update(ctx context.Context, req resource.U
 		target.Headers = headers
 	}
 	if !plan.Secret.IsNull() {
-		target.Secret = plan.Secret.ValueString()
+		secrets := make(map[string]string)
+		diags = plan.Secret.ElementsAs(ctx, &secrets, false)
+		resp.Diagnostics.Append(diags...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		target.Secrets = secrets
 	}
 	if !plan.Comment.IsNull() {
 		target.Comment = plan.Comment.ValueString()
@@ -355,6 +381,14 @@ func (r *webhookNotificationResource) Update(ctx context.Context, req resource.U
 		disable := plan.Disable.ValueBool()
 		target.Disable = &disable
 	}
+	target.Delete = deleteIfNull(target.Delete, plan.Body, "body")
+	target.Delete = deleteIfNull(target.Delete, plan.Headers, "header")
+	if len(target.Secrets) == 0 {
+		// Covers both a removed map and an empty one; omitting "secret" from
+		// the update would keep the secrets configured on PBS.
+		target.Delete = append(target.Delete, "secret")
+	}
+	target.Delete = deleteIfNull(target.Delete, plan.Comment, "comment")
 
 	err := r.client.Notifications.UpdateWebhookTarget(ctx, plan.Name.ValueString(), target)
 	if err != nil {
@@ -399,6 +433,8 @@ func (r *webhookNotificationResource) Update(ctx context.Context, req resource.U
 		plan.Headers = types.MapNull(types.StringType)
 	}
 
+	plan.Secret = reconcileWebhookSecrets(plan.Secret, updated.SecretNames)
+
 	if updated.Comment != "" {
 		plan.Comment = types.StringValue(updated.Comment)
 	} else {
@@ -408,7 +444,7 @@ func (r *webhookNotificationResource) Update(ctx context.Context, req resource.U
 	if updated.Disable != nil {
 		plan.Disable = types.BoolValue(*updated.Disable)
 	} else {
-		plan.Disable = types.BoolNull()
+		plan.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 
 	if updated.Origin != "" {
@@ -430,7 +466,7 @@ func (r *webhookNotificationResource) Delete(ctx context.Context, req resource.D
 	}
 
 	err := r.client.Notifications.DeleteWebhookTarget(ctx, state.Name.ValueString())
-	if err != nil {
+	if err != nil && !api.IsNotFound(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting Webhook notification target",
 			fmt.Sprintf("Could not delete Webhook notification target %s: %s", state.Name.ValueString(), err.Error()),
@@ -442,4 +478,31 @@ func (r *webhookNotificationResource) Delete(ctx context.Context, req resource.D
 // ImportState imports the resource state.
 func (r *webhookNotificationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
+}
+
+// reconcileWebhookSecrets builds the secret map from the names PBS reports.
+// PBS never returns secret values, so values are kept from prior state; names
+// that are new on the server get an empty value and names removed on the
+// server disappear, both of which surface as drift.
+func reconcileWebhookSecrets(prior types.Map, names []string) types.Map {
+	if len(names) == 0 {
+		if !prior.IsNull() && !prior.IsUnknown() && len(prior.Elements()) == 0 {
+			return prior // keep an explicitly empty map
+		}
+
+		return types.MapNull(types.StringType)
+	}
+
+	priorElems := prior.Elements()
+	elems := make(map[string]attr.Value, len(names))
+
+	for _, n := range names {
+		if v, ok := priorElems[n]; ok && !v.IsUnknown() {
+			elems[n] = v
+		} else {
+			elems[n] = types.StringValue("")
+		}
+	}
+
+	return types.MapValueMust(types.StringType, elems)
 }

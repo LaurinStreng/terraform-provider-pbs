@@ -23,6 +23,7 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/remotes"
 )
 
@@ -92,7 +93,7 @@ Updates to the password will always be sent to the API but cannot be verified by
 				},
 			},
 			"host": schema.StringAttribute{
-				Description: "The hostname or IP address of the remote PBS server.",
+				Description:         "The hostname or IP address of the remote PBS server.",
 				MarkdownDescription: "The hostname or IP address of the remote PBS server.",
 				Required:            true,
 			},
@@ -105,7 +106,7 @@ Updates to the password will always be sent to the API but cannot be verified by
 				},
 			},
 			"auth_id": schema.StringAttribute{
-				Description: "Authentication ID for the remote server (e.g., 'user@pam' or 'user@pbs!token').",
+				Description:         "Authentication ID for the remote server (e.g., 'user@pam' or 'user@pbs!token').",
 				MarkdownDescription: "Authentication ID for the remote server (e.g., `user@pam` or `user@pbs!token`).",
 				Required:            true,
 				Validators: []validator.String{
@@ -147,8 +148,8 @@ Updates to the password will always be sent to the API but cannot be verified by
 				},
 			},
 			"digest": schema.StringAttribute{
-				Description:         "Opaque digest returned by PBS for optimistic locking.",
-				MarkdownDescription: "Opaque digest returned by PBS for optimistic locking.",
+				Description:         "SHA-256 digest of the PBS configuration file (remote.cfg) as of the last read. Informational only: it covers all objects in that file, changes on every write and is not used for locking.",
+				MarkdownDescription: "SHA-256 digest of the PBS configuration file (remote.cfg) as of the last read. Informational only: it covers all objects in that file, changes on every write and is not used for locking.",
 				Computed:            true,
 			},
 		},
@@ -207,7 +208,7 @@ func (r *remoteResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	// Read back to get digest and verify creation
+	// Read back to get computed values (digest) and verify creation
 	createdRemote, err := r.client.Remotes.GetRemote(ctx, plan.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -233,6 +234,11 @@ func (r *remoteResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 	remote, err := r.client.Remotes.GetRemote(ctx, state.Name.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Error reading remote",
 			fmt.Sprintf("Could not read remote %s: %s", state.Name.ValueString(), err.Error()),
@@ -259,17 +265,11 @@ func (r *remoteResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	// Copy digest from state if not in plan
-	if (plan.Digest.IsNull() || plan.Digest.IsUnknown()) && !state.Digest.IsNull() && !state.Digest.IsUnknown() {
-		plan.Digest = state.Digest
-	}
-
 	remote := &remotes.Remote{
 		Name:     plan.Name.ValueString(),
 		Host:     plan.Host.ValueString(),
 		AuthID:   plan.AuthID.ValueString(),
 		Password: plan.Password.ValueString(),
-		Digest:   plan.Digest.ValueString(),
 	}
 
 	if !plan.Port.IsNull() && !plan.Port.IsUnknown() {
@@ -294,7 +294,7 @@ func (r *remoteResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	// Read back to get updated digest
+	// Read back to get computed values (digest changes on every write)
 	updatedRemote, err := r.client.Remotes.GetRemote(ctx, plan.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -317,12 +317,11 @@ func (r *remoteResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
-	digest := ""
-	if !state.Digest.IsNull() && !state.Digest.IsUnknown() {
-		digest = state.Digest.ValueString()
-	}
+	if err := r.client.Remotes.DeleteRemote(ctx, state.Name.ValueString()); err != nil {
+		if api.IsNotFound(err) {
+			return
+		}
 
-	if err := r.client.Remotes.DeleteRemote(ctx, state.Name.ValueString(), digest); err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting remote",
 			fmt.Sprintf("Could not delete remote %s: %s", state.Name.ValueString(), err.Error()),
@@ -334,7 +333,7 @@ func (r *remoteResource) Delete(ctx context.Context, req resource.DeleteRequest,
 func (r *remoteResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	// Import by name
 	resource.ImportStatePassthroughID(ctx, path.Root("name"), req, resp)
-	
+
 	// Add a warning about password
 	resp.Diagnostics.AddWarning(
 		"Password not imported",

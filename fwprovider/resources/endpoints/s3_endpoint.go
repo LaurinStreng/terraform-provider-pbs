@@ -26,6 +26,7 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/endpoints"
 )
 
@@ -232,6 +233,10 @@ func (r *s3EndpointResource) Read(ctx context.Context, req resource.ReadRequest,
 	// Get refreshed values from API
 	endpoint, err := r.client.Endpoints.GetS3Endpoint(ctx, state.ID.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error Reading S3 Endpoint",
 			"Could not read S3 endpoint ID "+state.ID.ValueString()+": "+err.Error(),
@@ -339,6 +344,23 @@ func (r *s3EndpointResource) Update(ctx context.Context, req resource.UpdateRequ
 		endpoint.ProviderQuirks = quirks
 	}
 
+	// Optional settings removed from the configuration must be cleared
+	// explicitly; PBS keeps properties that are simply omitted.
+	for _, opt := range []struct {
+		prop  string
+		value attr.Value
+	}{
+		{"region", plan.Region},
+		{"fingerprint", plan.Fingerprint},
+		{"port", plan.Port},
+		{"path-style", plan.PathStyle},
+		{"provider-quirks", plan.ProviderQuirks},
+	} {
+		if opt.value.IsNull() {
+			endpoint.Delete = append(endpoint.Delete, opt.prop)
+		}
+	}
+
 	err := r.client.Endpoints.UpdateS3Endpoint(ctx, plan.ID.ValueString(), endpoint)
 	if err != nil {
 		resp.Diagnostics.AddError(
@@ -372,10 +394,7 @@ func (r *s3EndpointResource) Delete(ctx context.Context, req resource.DeleteRequ
 	if err != nil {
 		// Check if the endpoint is already gone (desired state achieved)
 		errorMsg := err.Error()
-		if strings.Contains(errorMsg, "not found") ||
-			strings.Contains(errorMsg, "does not exist") ||
-			strings.Contains(errorMsg, "no such s3-endpoint") ||
-			strings.Contains(errorMsg, "404") {
+		if api.IsNotFound(err) {
 			// Resource already deleted - this is fine, desired state achieved
 			tflog.Info(ctx, "S3 endpoint already deleted", map[string]any{"id": state.ID.ValueString()})
 			return

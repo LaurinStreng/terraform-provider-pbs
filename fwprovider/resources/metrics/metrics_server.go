@@ -9,6 +9,7 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/metrics"
 )
 
@@ -295,6 +297,10 @@ func (r *metricsServerResource) Read(ctx context.Context, req resource.ReadReque
 	serverType := metrics.MetricsServerType(state.Type.ValueString())
 	server, err := r.client.Metrics.GetMetricsServer(ctx, serverType, state.Name.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Error reading metrics server",
 			fmt.Sprintf("Could not read metrics server %s: %s", state.Name.ValueString(), err.Error()),
@@ -302,47 +308,105 @@ func (r *metricsServerResource) Read(ctx context.Context, req resource.ReadReque
 		return
 	}
 
-	// Update state with values from API
-	if server.URL != "" {
-		state.URL = types.StringValue(server.URL)
-	} else {
+	applyServerToState(server, serverType, &state)
+
+	// Set refreshed state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+}
+
+// applyServerToState copies the server configuration returned by PBS into
+// state. PBS omits values that are at their default, so absent values map to
+// the schema defaults. Attributes that are not applicable to the server type
+// (or not stored by PBS at all) keep their prior value, falling back to the
+// schema default after import.
+func applyServerToState(server *metrics.MetricsServer, serverType metrics.MetricsServerType, state *metricsServerResourceModel) {
+	// Address: keep the style (url vs. server+port) the user configured.
+	// After import neither is set, so url is used for HTTP.
+	switch serverType {
+	case metrics.MetricsServerTypeInfluxDBHTTP:
+		if !state.URL.IsNull() || state.Server.IsNull() {
+			state.URL = types.StringValue(server.URL)
+			state.Server = types.StringNull()
+			state.Port = types.Int64Null()
+		} else {
+			state.Server = types.StringValue(server.Server)
+			state.Port = types.Int64Value(int64(server.Port))
+		}
+	case metrics.MetricsServerTypeInfluxDBUDP:
 		state.Server = types.StringValue(server.Server)
-		state.Port = types.Int64Value(int64(server.Port))
+		if server.Port > 0 {
+			state.Port = types.Int64Value(int64(server.Port))
+		} else {
+			state.Port = types.Int64Null()
+		}
 	}
 
-	if server.Enable != nil {
-		state.Enable = types.BoolValue(*server.Enable)
-	}
-	if server.MTU != nil {
-		state.MTU = types.Int64Value(int64(*server.MTU))
-	}
+	state.Enable = boolOrDefault(server.Enable, true)
+
 	if server.Comment != "" {
 		state.Comment = types.StringValue(server.Comment)
+	} else {
+		state.Comment = types.StringNull()
 	}
 
 	// Type-specific fields
 	switch serverType {
 	case metrics.MetricsServerTypeInfluxDBUDP:
-		// PBS 4.0: Protocol field removed
+		state.MTU = intOrDefault(server.MTU, defaultMTU)
+		state.MaxBodySize = keepOrDefaultInt(state.MaxBodySize, defaultMaxBodySize)
+		state.VerifyTLS = keepOrDefaultBool(state.VerifyTLS, true)
 	case metrics.MetricsServerTypeInfluxDBHTTP:
-		if server.Organization != "" {
-			state.Organization = types.StringValue(server.Organization)
-		}
-		if server.Bucket != "" {
-			state.Bucket = types.StringValue(server.Bucket)
-		}
-		// Don't update token from API (sensitive field)
-		if server.MaxBodySize != nil {
-			state.MaxBodySize = types.Int64Value(int64(*server.MaxBodySize))
-		}
-		if server.VerifyTLS != nil {
-			state.VerifyTLS = types.BoolValue(*server.VerifyTLS)
-		}
-		// PBS 4.0: Timeout field removed
+		state.Organization = stringOrNull(server.Organization)
+		state.Bucket = stringOrNull(server.Bucket)
+		// The token is never returned by PBS; keep the configured value.
+		state.MaxBodySize = intOrDefault(server.MaxBodySize, defaultMaxBodySize)
+		state.VerifyTLS = boolOrDefault(server.VerifyTLS, true)
+		state.MTU = keepOrDefaultInt(state.MTU, defaultMTU)
 	}
 
-	// Set refreshed state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	// PBS 4.0 no longer stores a timeout; keep the configured value.
+	state.Timeout = keepOrDefaultInt(state.Timeout, defaultTimeout)
+}
+
+const (
+	defaultMTU         = 1500
+	defaultMaxBodySize = 25000000
+	defaultTimeout     = 5
+)
+
+func stringOrNull(v string) types.String {
+	if v == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(v)
+}
+
+func boolOrDefault(v *bool, def bool) types.Bool {
+	if v == nil {
+		return types.BoolValue(def)
+	}
+	return types.BoolValue(*v)
+}
+
+func intOrDefault(v *int, def int64) types.Int64 {
+	if v == nil {
+		return types.Int64Value(def)
+	}
+	return types.Int64Value(int64(*v))
+}
+
+func keepOrDefaultInt(v types.Int64, def int64) types.Int64 {
+	if v.IsNull() || v.IsUnknown() {
+		return types.Int64Value(def)
+	}
+	return v
+}
+
+func keepOrDefaultBool(v types.Bool, def bool) types.Bool {
+	if v.IsNull() || v.IsUnknown() {
+		return types.BoolValue(def)
+	}
+	return v
 }
 
 // Update updates the resource and sets the updated Terraform state on success.
@@ -378,6 +442,8 @@ func (r *metricsServerResource) Update(ctx context.Context, req resource.UpdateR
 	}
 	if !plan.Comment.IsNull() {
 		server.Comment = plan.Comment.ValueString()
+	} else {
+		server.Delete = append(server.Delete, "comment")
 	}
 
 	// Type-specific fields
@@ -452,5 +518,16 @@ func (r *metricsServerResource) Delete(ctx context.Context, req resource.DeleteR
 // ImportState imports the resource state.
 func (r *metricsServerResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	// Import expects format: type/name (e.g., "influxdb-http/my-server")
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	serverType, name, ok := strings.Cut(req.ID, "/")
+	if !ok || name == "" ||
+		(serverType != string(metrics.MetricsServerTypeInfluxDBHTTP) && serverType != string(metrics.MetricsServerTypeInfluxDBUDP)) {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("Expected import ID in the format <type>/<name> with type influxdb-http or influxdb-udp, got %q", req.ID),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("type"), serverType)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), name)...)
 }

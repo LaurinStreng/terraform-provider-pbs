@@ -31,6 +31,7 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/datastores"
 )
 
@@ -396,13 +397,9 @@ func (r *datastoreResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Optional:            true,
 			},
 			"digest": schema.StringAttribute{
-				Description:         "Opaque digest returned by PBS for optimistic locking.",
-				MarkdownDescription: "Opaque digest returned by PBS for optimistic locking.",
+				Description:         "SHA-256 digest of the PBS configuration file (datastore.cfg) as of the last read. Informational only: it covers all objects in that file, changes on every write and is not used for locking.",
+				MarkdownDescription: "SHA-256 digest of the PBS configuration file (datastore.cfg) as of the last read. Informational only: it covers all objects in that file, changes on every write and is not used for locking.",
 				Computed:            true,
-				Optional:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"s3_client": schema.StringAttribute{
 				Description:         "S3 endpoint ID for S3 datastores.",
@@ -665,6 +662,16 @@ func (r *datastoreResource) Read(ctx context.Context, req resource.ReadRequest, 
 			break
 		}
 
+		// Deleted outside of Terraform: drop from state so it gets re-created.
+		// Create already waits for new datastores to become visible, so a
+		// not-found here is authoritative and must not be retried.
+		if api.IsNotFound(err) {
+			tflog.Warn(ctx, "datastore not found, removing from state", map[string]any{"name": state.Name.ValueString()})
+			resp.State.RemoveResource(ctx)
+
+			return
+		}
+
 		// If it's the last attempt, don't wait
 		if i < maxRetries-1 {
 			// Wait with exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, but cap at 5s
@@ -714,10 +721,6 @@ func (r *datastoreResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	if plan.Digest.IsNull() && !state.Digest.IsNull() && !state.Digest.IsUnknown() {
-		plan.Digest = state.Digest
-	}
-
 	// Validate type-specific requirements
 	if err := r.validateDatastoreConfig(&plan); err != nil {
 		resp.Diagnostics.AddError("Configuration Validation Error", err.Error())
@@ -743,6 +746,18 @@ func (r *datastoreResource) Update(ctx context.Context, req resource.UpdateReque
 		)
 		return
 	}
+
+	// The digest is unknown in the plan (it changes with every write to
+	// datastore.cfg), so read it back from PBS.
+	updated, err := r.client.Datastores.GetDatastore(ctx, plan.Name.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Reading Datastore",
+			"Could not read datastore after update: "+err.Error(),
+		)
+		return
+	}
+	plan.Digest = types.StringValue(updated.Digest)
 
 	// Log that the resource was updated
 	tflog.Trace(ctx, "updated datastore resource", map[string]any{"name": plan.Name.ValueString()})
@@ -1007,10 +1022,6 @@ func (r *datastoreResource) planToDatastore(plan *datastoreResourceModel, state 
 			"client": ds.S3Client,
 			"bucket": ds.S3Bucket,
 		})
-	}
-
-	if !plan.Digest.IsNull() && !plan.Digest.IsUnknown() {
-		ds.Digest = plan.Digest.ValueString()
 	}
 
 	if state != nil {
@@ -1329,11 +1340,6 @@ func (r *datastoreResource) planToDatastoreForUpdate(plan *datastoreResourceMode
 		ds.Fingerprint = plan.Fingerprint.ValueString()
 	}
 
-	// Digest is required for optimistic locking
-	if !plan.Digest.IsNull() && !plan.Digest.IsUnknown() {
-		ds.Digest = plan.Digest.ValueString()
-	}
-
 	// Handle field deletions (when fields are removed from plan)
 	if state != nil {
 		var deletes []string
@@ -1389,7 +1395,8 @@ func (r *datastoreResource) datastoreToState(ds *datastores.Datastore, state *da
 	state.Path = stringValueOrNull(ds.Path)
 	state.BackingDevice = stringValueOrNull(ds.BackingDevice)
 	state.Comment = stringValueOrNull(ds.Comment)
-	state.Disabled = boolValueOrNull(ds.Disabled)
+	// PBS omits "disable" when false; map absence to the schema default.
+	state.Disabled = types.BoolValue(ds.Disabled != nil && *ds.Disabled)
 	state.GCSchedule = stringValueOrNull(ds.GCSchedule)
 	state.PruneSchedule = stringValueOrNull(ds.PruneSchedule)
 	state.KeepLast = intValueOrNull(ds.KeepLast)

@@ -51,16 +51,18 @@ type SMTPTarget struct {
 	Disable    *bool    `json:"disable,omitempty"`
 	MailtoUser []string `json:"mailto-user,omitempty"`
 	Origin     string   `json:"origin,omitempty"`
+	Delete     []string `json:"delete,omitempty"` // properties to delete on update
 }
 
 // GotifyTarget represents a Gotify notification target configuration
 type GotifyTarget struct {
-	Name    string `json:"name"`
-	Server  string `json:"server"`
-	Token   string `json:"token"`
-	Comment string `json:"comment,omitempty"`
-	Disable *bool  `json:"disable,omitempty"`
-	Origin  string `json:"origin,omitempty"`
+	Name    string   `json:"name"`
+	Server  string   `json:"server"`
+	Token   string   `json:"token"`
+	Comment string   `json:"comment,omitempty"`
+	Disable *bool    `json:"disable,omitempty"`
+	Origin  string   `json:"origin,omitempty"`
+	Delete  []string `json:"delete,omitempty"` // properties to delete on update
 }
 
 // SendmailTarget represents a Sendmail notification target configuration
@@ -73,6 +75,7 @@ type SendmailTarget struct {
 	Comment    string   `json:"comment,omitempty"`
 	Disable    *bool    `json:"disable,omitempty"`
 	Origin     string   `json:"origin,omitempty"`
+	Delete     []string `json:"delete,omitempty"` // properties to delete on update
 }
 
 // WebhookTarget represents a Webhook notification target configuration
@@ -82,10 +85,17 @@ type WebhookTarget struct {
 	Body    string            `json:"body,omitempty"`
 	Method  string            `json:"method,omitempty"` // POST, PUT
 	Headers map[string]string `json:"header,omitempty"`
-	Secret  string            `json:"secret,omitempty"`
-	Comment string            `json:"comment,omitempty"`
-	Disable *bool             `json:"disable,omitempty"`
-	Origin  string            `json:"origin,omitempty"`
+	// Secrets maps secret names to values. It is only sent to PBS (as
+	// "name=<key>,value=<base64>" entries) and never populated on read,
+	// because PBS does not return secret values.
+	Secrets map[string]string `json:"-"`
+	// SecretNames lists the names of the secrets configured on PBS. It is
+	// populated on read only; PBS returns the names but never the values.
+	SecretNames []string `json:"-"`
+	Comment     string   `json:"comment,omitempty"`
+	Disable     *bool    `json:"disable,omitempty"`
+	Origin      string   `json:"origin,omitempty"`
+	Delete      []string `json:"delete,omitempty"` // properties to delete on update
 }
 
 // SMTP Target Methods
@@ -217,6 +227,10 @@ func (c *Client) UpdateSMTPTarget(ctx context.Context, name string, target *SMTP
 		body["disable"] = *target.Disable
 	}
 
+	if len(target.Delete) > 0 {
+		body["delete"] = target.Delete
+	}
+
 	path := fmt.Sprintf("/config/notifications/endpoints/smtp/%s", url.PathEscape(name))
 	_, err := c.api.Put(ctx, path, body)
 	if err != nil {
@@ -326,6 +340,10 @@ func (c *Client) UpdateGotifyTarget(ctx context.Context, name string, target *Go
 	}
 	if target.Disable != nil {
 		body["disable"] = *target.Disable
+	}
+
+	if len(target.Delete) > 0 {
+		body["delete"] = target.Delete
 	}
 
 	path := fmt.Sprintf("/config/notifications/endpoints/gotify/%s", url.PathEscape(name))
@@ -450,6 +468,10 @@ func (c *Client) UpdateSendmailTarget(ctx context.Context, name string, target *
 		body["disable"] = *target.Disable
 	}
 
+	if len(target.Delete) > 0 {
+		body["delete"] = target.Delete
+	}
+
 	path := fmt.Sprintf("/config/notifications/endpoints/sendmail/%s", url.PathEscape(name))
 	_, err := c.api.Put(ctx, path, body)
 	if err != nil {
@@ -522,16 +544,16 @@ func (c *Client) CreateWebhookTarget(ctx context.Context, target *WebhookTarget)
 	}
 
 	if target.Body != "" {
-		body["body"] = target.Body
+		body["body"] = encodeWebhookBody(target.Body)
 	}
 	if target.Method != "" {
 		body["method"] = target.Method
 	}
-	if target.Secret != "" {
-		body["secret"] = target.Secret
+	if len(target.Secrets) > 0 {
+		body["secret"] = encodeWebhookSecrets(target.Secrets)
 	}
 	if len(target.Headers) > 0 {
-		body["header"] = target.Headers
+		body["header"] = encodeWebhookHeaders(target.Headers)
 	}
 	if target.Comment != "" {
 		body["comment"] = target.Comment
@@ -560,22 +582,26 @@ func (c *Client) UpdateWebhookTarget(ctx context.Context, name string, target *W
 		body["url"] = target.URL
 	}
 	if target.Body != "" {
-		body["body"] = target.Body
+		body["body"] = encodeWebhookBody(target.Body)
 	}
 	if target.Method != "" {
 		body["method"] = target.Method
 	}
-	if target.Secret != "" {
-		body["secret"] = target.Secret
+	if len(target.Secrets) > 0 {
+		body["secret"] = encodeWebhookSecrets(target.Secrets)
 	}
 	if len(target.Headers) > 0 {
-		body["header"] = target.Headers
+		body["header"] = encodeWebhookHeaders(target.Headers)
 	}
 	if target.Comment != "" {
 		body["comment"] = target.Comment
 	}
 	if target.Disable != nil {
 		body["disable"] = *target.Disable
+	}
+
+	if len(target.Delete) > 0 {
+		body["delete"] = target.Delete
 	}
 
 	path := fmt.Sprintf("/config/notifications/endpoints/webhook/%s", url.PathEscape(name))

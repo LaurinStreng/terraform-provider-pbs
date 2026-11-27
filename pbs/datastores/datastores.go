@@ -156,6 +156,9 @@ func (c *Client) GetDatastore(ctx context.Context, name string) (*Datastore, err
 		var ds Datastore
 		if unmarshalErr := json.Unmarshal(resp.Data, &ds); unmarshalErr == nil {
 			ds.Name = name // Ensure name is set
+			if ds.Digest == "" {
+				ds.Digest = resp.Digest
+			}
 			if isDebugEnabled() {
 				tflog.Debug(ctx, "GetDatastore: Successfully unmarshaled datastore", map[string]interface{}{
 					"name": name,
@@ -438,11 +441,6 @@ func (c *Client) datastoreToMap(ds *Datastore) map[string]interface{} {
 func (c *Client) datastoreToMapForUpdate(ds *Datastore) map[string]interface{} {
 	body := map[string]interface{}{}
 	c.populateDatastoreMutableFields(body, ds)
-
-	// Include digest for optimistic locking if present
-	if ds.Digest != "" {
-		body["digest"] = ds.Digest
-	}
 
 	if len(ds.Delete) > 0 {
 		body["delete"] = ds.Delete

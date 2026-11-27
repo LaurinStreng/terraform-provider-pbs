@@ -98,7 +98,7 @@ func (p *pbsProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *
 				Optional:    true,
 			},
 			"api_token": schema.StringAttribute{
-				Description: "The API token for authentication (format: user@realm:token_name=token_value)",
+				Description: "The API token for authentication (format: `user@realm!tokenname:secret`, e.g. `terraform@pbs!automation:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`). Can also be set with the PBS_API_TOKEN environment variable.",
 				Optional:    true,
 				Sensitive:   true,
 			},

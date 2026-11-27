@@ -20,6 +20,7 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/notifications"
 )
 
@@ -174,7 +175,7 @@ func (r *gotifyNotificationResource) Create(ctx context.Context, req resource.Cr
 	if created.Disable != nil {
 		plan.Disable = types.BoolValue(*created.Disable)
 	} else {
-		plan.Disable = types.BoolNull()
+		plan.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 
 	if created.Origin != "" {
@@ -197,6 +198,11 @@ func (r *gotifyNotificationResource) Read(ctx context.Context, req resource.Read
 
 	target, err := r.client.Notifications.GetGotifyTarget(ctx, state.Name.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Error reading Gotify notification target",
 			fmt.Sprintf("Could not read Gotify notification target %s: %s", state.Name.ValueString(), err.Error()),
@@ -214,7 +220,7 @@ func (r *gotifyNotificationResource) Read(ctx context.Context, req resource.Read
 	if target.Disable != nil {
 		state.Disable = types.BoolValue(*target.Disable)
 	} else {
-		state.Disable = types.BoolNull()
+		state.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 
 	if target.Origin != "" {
@@ -248,6 +254,7 @@ func (r *gotifyNotificationResource) Update(ctx context.Context, req resource.Up
 		disable := plan.Disable.ValueBool()
 		target.Disable = &disable
 	}
+	target.Delete = deleteIfNull(target.Delete, plan.Comment, "comment")
 
 	err := r.client.Notifications.UpdateGotifyTarget(ctx, plan.Name.ValueString(), target)
 	if err != nil {
@@ -278,7 +285,7 @@ func (r *gotifyNotificationResource) Update(ctx context.Context, req resource.Up
 	if updated.Disable != nil {
 		plan.Disable = types.BoolValue(*updated.Disable)
 	} else {
-		plan.Disable = types.BoolNull()
+		plan.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 
 	if updated.Origin != "" {
@@ -300,7 +307,7 @@ func (r *gotifyNotificationResource) Delete(ctx context.Context, req resource.De
 	}
 
 	err := r.client.Notifications.DeleteGotifyTarget(ctx, state.Name.ValueString())
-	if err != nil {
+	if err != nil && !api.IsNotFound(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting Gotify notification target",
 			fmt.Sprintf("Could not delete Gotify notification target %s: %s", state.Name.ValueString(), err.Error()),
