@@ -1,5 +1,5 @@
 NAME=terraform-provider-pbs
-VERSION=0.1.0
+VERSION=1.0.2
 
 default: build
 
@@ -51,8 +51,8 @@ release-test:
 release:
 	@echo "To create a release:"
 	@echo "  1. Ensure all changes are committed"
-	@echo "  2. Create and push a tag: git tag -a v0.1.0 -m 'Release v0.1.0'"
-	@echo "  3. Push the tag: git push origin v0.1.0"
+	@echo "  2. Create and push a tag: git tag -a v1.0.1 -m 'Release v1.0.1'"
+	@echo "  3. Push the tag: git push origin v1.0.1"
 	@echo "  4. GitHub Action will automatically build and publish"
 
 

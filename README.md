@@ -25,6 +25,7 @@ A Terraform provider for managing [Proxmox Backup Server](https://www.proxmox.co
 - **Remotes**: remote PBS servers for sync jobs
 - **Metrics**: InfluxDB HTTP/UDP metrics servers
 - **Notifications**: SMTP, Gotify, Sendmail and webhook targets plus notification matchers
+- **Access control**: users, API tokens (with secret rotation) and ACL permissions
 - **Data sources** for all of the above
 - Full lifecycle support: create, read, update, delete and import
 
@@ -32,7 +33,6 @@ A Terraform provider for managing [Proxmox Backup Server](https://www.proxmox.co
 
 Not supported yet, but on the roadmap (contributions welcome — open an issue to coordinate):
 
-- [ ] **Access control**: users, API tokens, ACLs / permissions
 - [ ] **Authentication realms**: LDAP, Active Directory, OpenID Connect
 - [ ] **Datastore namespaces**
 - [ ] **Traffic control** rules (bandwidth limits)
@@ -54,7 +54,7 @@ terraform {
   required_providers {
     pbs = {
       source  = "laurinstreng/pbs"
-      version = "~> 0.1"
+      version = "~> 1.0"
     }
   }
 }
@@ -159,6 +159,50 @@ resource "pbs_datastore" "advanced" {
   }
 }
 ```
+
+### Users, API tokens and permissions
+
+```hcl
+# A PBS user (password only for the `pbs` realm)
+resource "pbs_user" "backup" {
+  userid   = "backup-bot@pbs"
+  comment  = "Backup automation"
+  email    = "backup@example.com"
+  password = var.backup_password
+}
+
+# An API token for that user; the secret is only returned on creation
+resource "pbs_api_token" "backup" {
+  userid             = pbs_user.backup.userid
+  token_name         = "ci"
+  regenerate_trigger = "2026-11" # change this value to rotate the secret
+}
+
+# Tokens have no rights of their own: grant them per path
+resource "pbs_acl" "backup_user" {
+  path    = "/datastore/backup"
+  auth_id = pbs_user.backup.userid
+  role    = "DatastoreBackup"
+}
+
+resource "pbs_acl" "backup_token" {
+  path    = "/datastore/backup"
+  auth_id = pbs_api_token.backup.tokenid # "backup-bot@pbs!ci"
+  role    = "DatastoreBackup"
+}
+
+output "backup_token_secret" {
+  value     = pbs_api_token.backup.value
+  sensitive = true
+}
+```
+
+Notes:
+
+- A token's effective rights are the intersection of its own ACLs and those of its user.
+- Changing a user's password requires the provider to authenticate with username/password; PBS rejects password changes made with an API token.
+- Deleting a user removes its API tokens and their ACLs, but not the ACLs of the user itself; manage those with `pbs_acl`.
+- Data sources: `pbs_user`, `pbs_users`, `pbs_acls`, `pbs_roles`.
 
 More examples live in [examples/](examples/). Full documentation for every resource and data source is on the [Terraform Registry](https://registry.terraform.io/providers/laurinstreng/pbs/latest/docs).
 

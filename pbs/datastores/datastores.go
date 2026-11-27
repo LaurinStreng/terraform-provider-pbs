@@ -386,6 +386,48 @@ func (c *Client) DeleteDatastoreWithOptions(ctx context.Context, name string, de
 		return fmt.Errorf("datastore name is required")
 	}
 
+	// The delete runs as a PBS task that takes the datastore config lock
+	// itself, so it can fail with a lock timeout while another task holds the
+	// lock. The task may already have done part of its work at that point:
+	// with destroy-data, PBS first puts the datastore into "delete"
+	// maintenance mode and removes the data, and only then takes the lock
+	// again to remove the config entry. Retrying is still the right thing to
+	// finish the deletion, but data that is already being destroyed must not
+	// be destroyed a second time.
+	err := c.deleteDatastoreOnce(ctx, name, destroyData)
+	for _, delay := range []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second} {
+		if !api.IsLockTimeout(err) {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(delay):
+		}
+
+		if destroyData && c.inDeleteMaintenance(ctx, name) {
+			destroyData = false
+		}
+
+		err = c.deleteDatastoreOnce(ctx, name, destroyData)
+	}
+
+	return err
+}
+
+// inDeleteMaintenance reports whether PBS has put the datastore into "delete"
+// maintenance mode, which happens when a deletion task has started.
+func (c *Client) inDeleteMaintenance(ctx context.Context, name string) bool {
+	ds, err := c.GetDatastore(ctx, name)
+	if err != nil {
+		return false
+	}
+
+	return strings.Contains(ds.MaintenanceModeRaw, "delete")
+}
+
+func (c *Client) deleteDatastoreOnce(ctx context.Context, name string, destroyData bool) error {
 	escapedName := url.PathEscape(name)
 	path := fmt.Sprintf("/config/datastore/%s", escapedName)
 

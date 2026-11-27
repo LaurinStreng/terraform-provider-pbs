@@ -81,3 +81,26 @@ func (e *Environment) AddSelfRemoteVars() {
 		"RemoteFingerprint": fingerprint,
 	})
 }
+
+// CheckLogin authenticates against the PBS under test with the given
+// credentials (username/password or APIToken "user@realm!name:secret") and
+// performs one authenticated request. It returns an error if PBS rejects
+// the credentials, so tests can verify passwords and token secrets on the
+// server instead of only in state.
+func (e *Environment) CheckLogin(creds api.Credentials) error {
+	e.t.Helper()
+
+	c, err := api.NewClient(creds, api.ClientOptions{
+		Endpoint: os.Getenv("PBS_ENDPOINT"),
+		Insecure: os.Getenv("PBS_INSECURE") == "true",
+		Timeout:  30 * time.Second,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Lists only the caller's own user without Sys.Audit, but requires a
+	// valid ticket or token.
+	_, err = c.Get(e.Context(), "/access/users")
+	return err
+}

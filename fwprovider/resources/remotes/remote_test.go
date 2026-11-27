@@ -161,7 +161,7 @@ resource "pbs_remote" "test" {
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "name",
 				// PBS never returns the password; it is write-only.
-				ImportStateVerifyIgnore: []string{"password"},
+				ImportStateVerifyIgnore: []string{"password", "digest"}, // digest: config-file wide, changes with parallel tests
 			},
 			{
 				// Removing optional attributes must clear them on the server.
