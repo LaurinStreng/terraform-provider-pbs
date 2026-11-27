@@ -157,11 +157,11 @@ func (d *notificationMatcherDataSource) Read(ctx context.Context, req datasource
 	}
 
 	// Map API response to state
-	state.Disable = boolValueOrNull(matcher.Disable)
+	state.Disable = boolValueOrFalse(matcher.Disable)
 	state.Comment = stringValueOrNull(matcher.Comment)
 	state.Origin = stringValueOrNull(matcher.Origin)
-	state.Mode = stringValueOrNull(matcher.Mode)
-	state.InvertMatch = boolValueOrNull(matcher.InvertMatch)
+	state.Mode = stringValueOrDefault(matcher.Mode, "all")
+	state.InvertMatch = boolValueOrFalse(matcher.InvertMatch)
 
 	// Convert string slices to lists
 	if matcher.Targets != nil {

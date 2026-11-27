@@ -112,6 +112,9 @@ func NewClient(creds Credentials, opts ClientOptions) (*Client, error) {
 type APIResponse struct {
 	Data   json.RawMessage `json:"data,omitempty"`
 	Errors interface{}     `json:"errors,omitempty"`
+	// Digest is the SHA256 of the whole config file (e.g. sync.cfg) the object
+	// lives in. PBS returns it next to "data" on GET /config/... endpoints.
+	Digest string `json:"digest,omitempty"`
 }
 
 // AuthResponse represents a PBS authentication response
@@ -193,7 +196,7 @@ func (c *Client) DoRequest(ctx context.Context, method, apiPath string, body int
 	startTime := time.Now()
 	resp, err := c.httpClient.Do(req)
 	elapsed := time.Since(startTime)
-	
+
 	if err != nil {
 		if isDebugEnabled() {
 			tflog.Debug(ctx, "API Request failed", map[string]interface{}{

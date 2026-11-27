@@ -57,8 +57,8 @@ func (d *syncJobsDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 				Optional:            true,
 			},
 			"remote": schema.StringAttribute{
-				Description:         "Filter sync jobs by remote name (optional).",
-				MarkdownDescription: "Filter sync jobs by remote name (optional).",
+				Description:         "Filter sync jobs by remote name (optional). Local sync jobs have no remote and never match.",
+				MarkdownDescription: "Filter sync jobs by remote name (optional). Local sync jobs have no remote and never match.",
 				Optional:            true,
 			},
 			"jobs": schema.ListNestedAttribute{
@@ -171,14 +171,14 @@ func (d *syncJobsDataSource) Read(ctx context.Context, req datasource.ReadReques
 		jobModel.ID = types.StringValue(job.ID)
 		jobModel.Store = types.StringValue(job.Store)
 		jobModel.Schedule = types.StringValue(job.Schedule)
-		jobModel.Remote = types.StringValue(job.Remote)
+		jobModel.Remote = stringToValue(job.Remote)
 		jobModel.RemoteStore = types.StringValue(job.RemoteStore)
 		jobModel.RemoteNamespace = stringToValue(job.RemoteNamespace)
 		jobModel.Namespace = stringToValue(job.Namespace)
 		jobModel.MaxDepth = intPtrToValue(job.MaxDepth)
 		jobModel.RemoveVanished = boolPtrToValue(job.RemoveVanished)
 		jobModel.Comment = stringToValue(job.Comment)
-		jobModel.Digest = types.StringValue(job.Digest)
+		jobModel.Digest = stringToValue(job.Digest)
 
 		// Convert group filter
 		if len(job.GroupFilter) > 0 {

@@ -53,6 +53,8 @@ type MetricsServer struct {
 	MaxBodySize  *int   `json:"max-body-size,omitempty"` // InfluxDB HTTP only
 	VerifyTLS    *bool  `json:"verify-tls,omitempty"`    // InfluxDB HTTP only (renamed from verify_certificate)
 	Comment      string `json:"comment,omitempty"`
+	// Delete lists properties to reset to their default on update.
+	Delete []string `json:"-"`
 }
 
 // ListMetricsServers lists all metrics server configurations
@@ -261,6 +263,10 @@ func (c *Client) UpdateMetricsServer(ctx context.Context, serverType MetricsServ
 		if server.MTU != nil {
 			body["mtu"] = *server.MTU
 		}
+	}
+
+	if len(server.Delete) > 0 {
+		body["delete"] = server.Delete
 	}
 
 	path := fmt.Sprintf("/config/metrics/%s/%s", serverType, url.PathEscape(name))

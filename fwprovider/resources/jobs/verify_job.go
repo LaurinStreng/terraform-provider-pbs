@@ -22,6 +22,7 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/jobs"
 )
 
@@ -123,12 +124,9 @@ determines how many days until a backup is considered due for re-verification.`,
 				Optional:            true,
 			},
 			"digest": schema.StringAttribute{
-				Description:         "Opaque digest returned by PBS for optimistic locking.",
-				MarkdownDescription: "Opaque digest returned by PBS for optimistic locking.",
+				Description:         "SHA-256 digest of the PBS configuration file (verify.cfg) as of the last read. Informational only: it covers all objects in that file, changes on every write and is not used for locking.",
+				MarkdownDescription: "SHA-256 digest of the PBS configuration file (verify.cfg) as of the last read. Informational only: it covers all objects in that file, changes on every write and is not used for locking.",
 				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 		},
 	}
@@ -195,6 +193,11 @@ func (r *verifyJobResource) Read(ctx context.Context, req resource.ReadRequest, 
 
 	job, err := r.client.Jobs.GetVerifyJob(ctx, state.ID.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Error reading verify job",
 			fmt.Sprintf("Could not read verify job %s: %s", state.ID.ValueString(), err.Error()),
@@ -218,10 +221,6 @@ func (r *verifyJobResource) Update(ctx context.Context, req resource.UpdateReque
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
-	}
-
-	if (plan.Digest.IsNull() || plan.Digest.IsUnknown()) && !state.Digest.IsNull() && !state.Digest.IsUnknown() {
-		plan.Digest = state.Digest
 	}
 
 	job := buildVerifyJobFromPlan(&plan)
@@ -256,12 +255,11 @@ func (r *verifyJobResource) Delete(ctx context.Context, req resource.DeleteReque
 		return
 	}
 
-	digest := ""
-	if !state.Digest.IsNull() && !state.Digest.IsUnknown() {
-		digest = state.Digest.ValueString()
-	}
+	if err := r.client.Jobs.DeleteVerifyJob(ctx, state.ID.ValueString()); err != nil {
+		if api.IsNotFound(err) {
+			return
+		}
 
-	if err := r.client.Jobs.DeleteVerifyJob(ctx, state.ID.ValueString(), digest); err != nil {
 		resp.Diagnostics.AddError(
 			"Error deleting verify job",
 			fmt.Sprintf("Could not delete verify job %s: %s", state.ID.ValueString(), err.Error()),
@@ -287,9 +285,6 @@ func buildVerifyJobFromPlan(plan *verifyJobResourceModel) *jobs.VerifyJob {
 	}
 	if !plan.Comment.IsNull() && !plan.Comment.IsUnknown() {
 		job.Comment = plan.Comment.ValueString()
-	}
-	if !plan.Digest.IsNull() && !plan.Digest.IsUnknown() {
-		job.Digest = plan.Digest.ValueString()
 	}
 
 	job.IgnoreVerified = boolPointerFromAttr(plan.IgnoreVerified)

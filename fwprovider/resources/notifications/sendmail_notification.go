@@ -21,6 +21,7 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/notifications"
 )
 
@@ -239,7 +240,7 @@ func (r *sendmailNotificationResource) Create(ctx context.Context, req resource.
 	if created.Disable != nil {
 		plan.Disable = types.BoolValue(*created.Disable)
 	} else {
-		plan.Disable = types.BoolNull()
+		plan.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 	if created.Origin != "" {
 		plan.Origin = types.StringValue(created.Origin)
@@ -261,6 +262,11 @@ func (r *sendmailNotificationResource) Read(ctx context.Context, req resource.Re
 
 	target, err := r.client.Notifications.GetSendmailTarget(ctx, state.Name.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Error reading Sendmail notification target",
 			fmt.Sprintf("Could not read Sendmail notification target %s: %s", state.Name.ValueString(), err.Error()),
@@ -302,7 +308,7 @@ func (r *sendmailNotificationResource) Read(ctx context.Context, req resource.Re
 	if target.Disable != nil {
 		state.Disable = types.BoolValue(*target.Disable)
 	} else {
-		state.Disable = types.BoolNull()
+		state.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 	if target.Origin != "" {
 		state.Origin = types.StringValue(target.Origin)
@@ -359,6 +365,8 @@ func (r *sendmailNotificationResource) Update(ctx context.Context, req resource.
 		disable := plan.Disable.ValueBool()
 		target.Disable = &disable
 	}
+	target.Delete = deleteIfNull(target.Delete, plan.Author, "author")
+	target.Delete = deleteIfNull(target.Delete, plan.Comment, "comment")
 
 	err := r.client.Notifications.UpdateSendmailTarget(ctx, plan.Name.ValueString(), target)
 	if err != nil {
@@ -415,7 +423,7 @@ func (r *sendmailNotificationResource) Update(ctx context.Context, req resource.
 	if updated.Disable != nil {
 		plan.Disable = types.BoolValue(*updated.Disable)
 	} else {
-		plan.Disable = types.BoolNull()
+		plan.Disable = types.BoolValue(false) // PBS omits disable=false
 	}
 	if updated.Origin != "" {
 		plan.Origin = types.StringValue(updated.Origin)
@@ -436,7 +444,7 @@ func (r *sendmailNotificationResource) Delete(ctx context.Context, req resource.
 	}
 
 	err := r.client.Notifications.DeleteSendmailTarget(ctx, state.Name.ValueString())
-	if err != nil {
+	if err != nil && !api.IsNotFound(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting Sendmail notification target",
 			fmt.Sprintf("Could not delete Sendmail notification target %s: %s", state.Name.ValueString(), err.Error()),

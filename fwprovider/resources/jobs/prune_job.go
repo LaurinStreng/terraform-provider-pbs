@@ -20,6 +20,7 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/jobs"
 )
 
@@ -145,12 +146,9 @@ keep-monthly, and keep-yearly parameters.`,
 				Default:             booldefault.StaticBool(false),
 			},
 			"digest": schema.StringAttribute{
-				Description:         "Opaque digest returned by PBS for optimistic locking.",
-				MarkdownDescription: "Opaque digest returned by PBS for optimistic locking.",
+				Description:         "SHA-256 digest of the PBS configuration file (prune.cfg) as of the last read. Informational only: it covers all objects in that file, changes on every write and is not used for locking.",
+				MarkdownDescription: "SHA-256 digest of the PBS configuration file (prune.cfg) as of the last read. Informational only: it covers all objects in that file, changes on every write and is not used for locking.",
 				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 		},
 	}
@@ -217,6 +215,11 @@ func (r *pruneJobResource) Read(ctx context.Context, req resource.ReadRequest, r
 
 	job, err := r.client.Jobs.GetPruneJob(ctx, state.ID.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Error reading prune job",
 			fmt.Sprintf("Could not read prune job %s: %s", state.ID.ValueString(), err.Error()),
@@ -241,10 +244,6 @@ func (r *pruneJobResource) Update(ctx context.Context, req resource.UpdateReques
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
-	}
-
-	if (plan.Digest.IsNull() || plan.Digest.IsUnknown()) && !state.Digest.IsNull() && !state.Digest.IsUnknown() {
-		plan.Digest = state.Digest
 	}
 
 	job := buildPruneJobFromPlan(&plan)
@@ -281,13 +280,12 @@ func (r *pruneJobResource) Delete(ctx context.Context, req resource.DeleteReques
 		return
 	}
 
-	digest := ""
-	if !state.Digest.IsNull() && !state.Digest.IsUnknown() {
-		digest = state.Digest.ValueString()
-	}
-
-	err := r.client.Jobs.DeletePruneJob(ctx, state.ID.ValueString(), digest)
+	err := r.client.Jobs.DeletePruneJob(ctx, state.ID.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Error deleting prune job",
 			fmt.Sprintf("Could not delete prune job %s: %s", state.ID.ValueString(), err.Error()),
@@ -324,9 +322,6 @@ func buildPruneJobFromPlan(plan *pruneJobResourceModel) *jobs.PruneJob {
 	}
 	if ptr := boolPointerFromAttr(plan.Disable); ptr != nil {
 		job.Disable = ptr
-	}
-	if !plan.Digest.IsNull() && !plan.Digest.IsUnknown() {
-		job.Digest = plan.Digest.ValueString()
 	}
 
 	return job

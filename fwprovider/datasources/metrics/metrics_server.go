@@ -171,19 +171,14 @@ func (d *metricsServerDataSource) Read(ctx context.Context, req datasource.ReadR
 	}
 
 	// Map API response to state
-	if err := metricsServerToState(server, &state); err != nil {
-		resp.Diagnostics.AddError(
-			"Error Converting Metrics Server",
-			fmt.Sprintf("Could not convert metrics server to state: %s", err.Error()),
-		)
-		return
-	}
+	metricsServerToState(server, &state)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
-// metricsServerToState converts a metrics server struct to Terraform state
-func metricsServerToState(server *metrics.MetricsServer, state *metricsServerDataSourceModel) error {
+// metricsServerToState converts a metrics server struct to Terraform state.
+// PBS omits values at their default, so absence maps to the PBS default.
+func metricsServerToState(server *metrics.MetricsServer, state *metricsServerDataSourceModel) {
 	state.Name = types.StringValue(server.Name)
 	state.Type = types.StringValue(string(server.Type))
 	state.Comment = stringValueOrNull(server.Comment)
@@ -200,18 +195,22 @@ func metricsServerToState(server *metrics.MetricsServer, state *metricsServerDat
 	}
 
 	// Type-specific fields
+	state.MTU = types.Int64Null()
+	state.Organization = types.StringNull()
+	state.Bucket = types.StringNull()
+	state.MaxBodySize = types.Int64Null()
+	state.VerifyTLS = types.BoolNull()
+
 	if server.Type == metrics.MetricsServerTypeInfluxDBUDP {
-		state.MTU = intValueOrNull(server.MTU)
+		state.MTU = intValueWithDefault(server.MTU, 1500)
 	}
 
 	if server.Type == metrics.MetricsServerTypeInfluxDBHTTP {
 		state.Organization = stringValueOrNull(server.Organization)
 		state.Bucket = stringValueOrNull(server.Bucket)
-		state.MaxBodySize = intValueOrNull(server.MaxBodySize)
-		state.VerifyTLS = boolValueOrNull(server.VerifyTLS)
+		state.MaxBodySize = intValueWithDefault(server.MaxBodySize, 25000000)
+		state.VerifyTLS = boolValueWithDefault(server.VerifyTLS, true)
 	}
-
-	return nil
 }
 
 // Helper functions
@@ -223,18 +222,11 @@ func stringValueOrNull(s string) types.String {
 	return types.StringValue(s)
 }
 
-func intValueOrNull(ptr *int) types.Int64 {
+func intValueWithDefault(ptr *int, defaultValue int64) types.Int64 {
 	if ptr == nil {
-		return types.Int64Null()
+		return types.Int64Value(defaultValue)
 	}
 	return types.Int64Value(int64(*ptr))
-}
-
-func boolValueOrNull(ptr *bool) types.Bool {
-	if ptr == nil {
-		return types.BoolNull()
-	}
-	return types.BoolValue(*ptr)
 }
 
 func boolValueWithDefault(ptr *bool, defaultValue bool) types.Bool {

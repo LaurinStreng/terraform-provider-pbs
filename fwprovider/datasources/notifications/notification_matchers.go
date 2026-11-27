@@ -168,11 +168,11 @@ func (d *notificationMatchersDataSource) Read(ctx context.Context, req datasourc
 	for _, matcher := range matchersList {
 		m := notificationMatcherModel{
 			Name:        types.StringValue(matcher.Name),
-			Disable:     boolValueOrNull(matcher.Disable),
+			Disable:     boolValueOrFalse(matcher.Disable),
 			Comment:     stringValueOrNull(matcher.Comment),
 			Origin:      stringValueOrNull(matcher.Origin),
-			Mode:        stringValueOrNull(matcher.Mode),
-			InvertMatch: boolValueOrNull(matcher.InvertMatch),
+			Mode:        stringValueOrDefault(matcher.Mode, "all"),
+			InvertMatch: boolValueOrFalse(matcher.InvertMatch),
 		}
 
 		// Convert string slices to lists

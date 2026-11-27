@@ -59,6 +59,13 @@ func (c *Client) ListPruneJobs(ctx context.Context) ([]PruneJob, error) {
 		return nil, fmt.Errorf("failed to unmarshal prune jobs: %w", err)
 	}
 
+	// PBS returns a single digest for the whole config file next to "data".
+	for i := range jobs {
+		if jobs[i].Digest == "" {
+			jobs[i].Digest = resp.Digest
+		}
+	}
+
 	return jobs, nil
 }
 
@@ -73,6 +80,10 @@ func (c *Client) GetPruneJob(ctx context.Context, id string) (*PruneJob, error) 
 	var job PruneJob
 	if err := json.Unmarshal(resp.Data, &job); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal prune job %s: %w", id, err)
+	}
+
+	if job.Digest == "" {
+		job.Digest = resp.Digest
 	}
 
 	return &job, nil
@@ -173,9 +184,6 @@ func (c *Client) UpdatePruneJob(ctx context.Context, id string, job *PruneJob) e
 	if len(job.Delete) > 0 {
 		body["delete"] = job.Delete
 	}
-	if job.Digest != "" {
-		body["digest"] = job.Digest
-	}
 
 	path := fmt.Sprintf("/config/prune/%s", url.PathEscape(id))
 	_, err := c.api.Put(ctx, path, body)
@@ -187,15 +195,12 @@ func (c *Client) UpdatePruneJob(ctx context.Context, id string, job *PruneJob) e
 }
 
 // DeletePruneJob deletes a prune job
-func (c *Client) DeletePruneJob(ctx context.Context, id, digest string) error {
+func (c *Client) DeletePruneJob(ctx context.Context, id string) error {
 	if id == "" {
 		return fmt.Errorf("job ID is required")
 	}
 
 	path := fmt.Sprintf("/config/prune/%s", url.PathEscape(id))
-	if digest != "" {
-		path = fmt.Sprintf("%s?digest=%s", path, url.QueryEscape(digest))
-	}
 
 	_, err := c.api.Delete(ctx, path)
 	if err != nil {
@@ -207,11 +212,14 @@ func (c *Client) DeletePruneJob(ctx context.Context, id, digest string) error {
 
 // Sync Job Types
 
-// SyncJob represents a sync job configuration
+// SyncJob represents a sync job configuration.
+//
+// Remote is empty for local sync jobs (datastore to datastore on the same
+// PBS, PBS >= 3.3); RemoteStore is then the local source datastore.
 type SyncJob struct {
 	ID              string   `json:"id"`
 	Store           string   `json:"store"`
-	Remote          string   `json:"remote"`
+	Remote          string   `json:"remote,omitempty"`
 	RemoteStore     string   `json:"remote-store"`
 	RemoteNamespace string   `json:"remote-ns,omitempty"`
 	Schedule        string   `json:"schedule"`
@@ -263,6 +271,10 @@ func (c *Client) GetSyncJob(ctx context.Context, id string) (*SyncJob, error) {
 		return nil, fmt.Errorf("failed to unmarshal sync job %s: %w", id, err)
 	}
 
+	if job.Digest == "" {
+		job.Digest = resp.Digest
+	}
+
 	return &job, nil
 }
 
@@ -274,9 +286,6 @@ func (c *Client) CreateSyncJob(ctx context.Context, job *SyncJob) error {
 	if job.Store == "" {
 		return fmt.Errorf("datastore is required")
 	}
-	if job.Remote == "" {
-		return fmt.Errorf("remote is required")
-	}
 	if job.RemoteStore == "" {
 		return fmt.Errorf("remote datastore is required")
 	}
@@ -287,9 +296,13 @@ func (c *Client) CreateSyncJob(ctx context.Context, job *SyncJob) error {
 	body := map[string]interface{}{
 		"id":           job.ID,
 		"store":        job.Store,
-		"remote":       job.Remote,
 		"remote-store": job.RemoteStore,
 		"schedule":     job.Schedule,
+	}
+
+	// A sync job without remote is a local sync job.
+	if job.Remote != "" {
+		body["remote"] = job.Remote
 	}
 
 	setInt := func(key string, value *int) {
@@ -398,9 +411,6 @@ func (c *Client) UpdateSyncJob(ctx context.Context, id string, job *SyncJob) err
 	if len(job.Delete) > 0 {
 		body["delete"] = job.Delete
 	}
-	if job.Digest != "" {
-		body["digest"] = job.Digest
-	}
 
 	path := fmt.Sprintf("/config/sync/%s", url.PathEscape(id))
 	_, err := c.api.Put(ctx, path, body)
@@ -412,15 +422,12 @@ func (c *Client) UpdateSyncJob(ctx context.Context, id string, job *SyncJob) err
 }
 
 // DeleteSyncJob deletes a sync job
-func (c *Client) DeleteSyncJob(ctx context.Context, id, digest string) error {
+func (c *Client) DeleteSyncJob(ctx context.Context, id string) error {
 	if id == "" {
 		return fmt.Errorf("job ID is required")
 	}
 
 	path := fmt.Sprintf("/config/sync/%s", url.PathEscape(id))
-	if digest != "" {
-		path = fmt.Sprintf("%s?digest=%s", path, url.QueryEscape(digest))
-	}
 
 	_, err := c.api.Delete(ctx, path)
 	if err != nil {
@@ -458,6 +465,13 @@ func (c *Client) ListVerifyJobs(ctx context.Context) ([]VerifyJob, error) {
 		return nil, fmt.Errorf("failed to unmarshal verify jobs: %w", err)
 	}
 
+	// PBS returns a single digest for the whole config file next to "data".
+	for i := range jobs {
+		if jobs[i].Digest == "" {
+			jobs[i].Digest = resp.Digest
+		}
+	}
+
 	return jobs, nil
 }
 
@@ -472,6 +486,10 @@ func (c *Client) GetVerifyJob(ctx context.Context, id string) (*VerifyJob, error
 	var job VerifyJob
 	if err := json.Unmarshal(resp.Data, &job); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal verify job %s: %w", id, err)
+	}
+
+	if job.Digest == "" {
+		job.Digest = resp.Digest
 	}
 
 	return &job, nil
@@ -566,9 +584,6 @@ func (c *Client) UpdateVerifyJob(ctx context.Context, id string, job *VerifyJob)
 	if len(job.Delete) > 0 {
 		body["delete"] = job.Delete
 	}
-	if job.Digest != "" {
-		body["digest"] = job.Digest
-	}
 
 	path := fmt.Sprintf("/config/verify/%s", url.PathEscape(id))
 	_, err := c.api.Put(ctx, path, body)
@@ -580,15 +595,12 @@ func (c *Client) UpdateVerifyJob(ctx context.Context, id string, job *VerifyJob)
 }
 
 // DeleteVerifyJob deletes a verify job
-func (c *Client) DeleteVerifyJob(ctx context.Context, id, digest string) error {
+func (c *Client) DeleteVerifyJob(ctx context.Context, id string) error {
 	if id == "" {
 		return fmt.Errorf("job ID is required")
 	}
 
 	path := fmt.Sprintf("/config/verify/%s", url.PathEscape(id))
-	if digest != "" {
-		path = fmt.Sprintf("%s?digest=%s", path, url.QueryEscape(digest))
-	}
 
 	_, err := c.api.Delete(ctx, path)
 	if err != nil {

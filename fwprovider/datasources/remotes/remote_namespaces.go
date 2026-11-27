@@ -80,11 +80,11 @@ func (d *remoteNamespacesDataSource) Configure(_ context.Context, req datasource
 		return
 	}
 
-	cfg, ok := req.ProviderData.(*config.Resource)
+	cfg, ok := req.ProviderData.(*config.DataSource)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Data Source Configure Type",
-			fmt.Sprintf("Expected *config.Resource, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected *config.DataSource, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}

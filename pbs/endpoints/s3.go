@@ -38,6 +38,8 @@ type S3Endpoint struct {
 	PathStyle      *bool    `json:"path-style,omitempty"`
 	ProviderQuirks []string `json:"provider-quirks,omitempty"`
 	PutRateLimit   *int     `json:"put-rate-limit,omitempty"`
+	// Delete lists optional properties to clear on update.
+	Delete []string `json:"-"`
 }
 
 // ListS3Endpoints lists all S3 endpoint configurations
@@ -147,6 +149,10 @@ func (c *Client) UpdateS3Endpoint(ctx context.Context, id string, endpoint *S3En
 	}
 	if endpoint.PutRateLimit != nil {
 		body["put-rate-limit"] = *endpoint.PutRateLimit
+	}
+
+	if len(endpoint.Delete) > 0 {
+		body["delete"] = endpoint.Delete
 	}
 
 	path := fmt.Sprintf("/config/s3/%s", url.PathEscape(id))

@@ -1,0 +1,67 @@
+# Local test environment for acceptance tests.
+#
+#   docker compose up -d        # start PBS + helper services
+#   cp testacc.env.example testacc.env
+#   ./testacc --tier light
+#   docker compose down -v      # tear down and discard all state
+#
+# PBS uses the unofficial community image ayufan/proxmox-backup-server.
+# Default login: admin@pbs / pbspbs. Some features (removable datastores,
+# ZFS/disk management) are not available inside a container.
+
+name: pbs-testacc
+
+services:
+  pbs:
+    image: ayufan/proxmox-backup-server:${PBS_IMAGE_TAG:-v4}
+    hostname: pbs
+    ports:
+      - "8007:8007"
+    tmpfs:
+      - /run
+    volumes:
+      - pbs-etc:/etc/proxmox-backup
+      - pbs-lib:/var/lib/proxmox-backup
+      - pbs-log:/var/log/proxmox-backup
+      - pbs-datastore:/datastore
+    restart: unless-stopped
+
+  influxdb:
+    image: influxdb:2.7-alpine
+    ports:
+      - "8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: testpass123
+      DOCKER_INFLUXDB_INIT_ORG: testorg
+      DOCKER_INFLUXDB_INIT_BUCKET: pbs-metrics
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: test-token-for-pbs-provider
+
+  influxdb-udp:
+    image: influxdb:1.8
+    ports:
+      - "8089:8089/udp"
+    environment:
+      INFLUXDB_UDP_ENABLED: "true"
+      INFLUXDB_UDP_BIND_ADDRESS: ":8089"
+      INFLUXDB_UDP_DATABASE: udp
+
+  gotify:
+    image: gotify/server:latest
+    ports:
+      - "8080:80"
+    environment:
+      GOTIFY_DEFAULTUSER_NAME: admin
+      GOTIFY_DEFAULTUSER_PASS: admin
+
+  webhook:
+    image: tarampampam/webhook-tester:latest
+    ports:
+      - "8081:8080"
+
+volumes:
+  pbs-etc:
+  pbs-lib:
+  pbs-log:
+  pbs-datastore:

@@ -24,6 +24,7 @@ import (
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs"
+	"github.com/LaurinStreng/terraform-provider-pbs/pbs/api"
 	"github.com/LaurinStreng/terraform-provider-pbs/pbs/notifications"
 )
 
@@ -354,6 +355,11 @@ func (r *notificationMatcherResource) Read(ctx context.Context, req resource.Rea
 
 	matcher, err := r.client.Notifications.GetNotificationMatcher(ctx, state.Name.ValueString())
 	if err != nil {
+		if api.IsNotFound(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError(
 			"Error reading notification matcher",
 			fmt.Sprintf("Could not read notification matcher %s: %s", state.Name.ValueString(), err.Error()),
@@ -630,7 +636,7 @@ func (r *notificationMatcherResource) Delete(ctx context.Context, req resource.D
 	}
 
 	err := r.client.Notifications.DeleteNotificationMatcher(ctx, state.Name.ValueString())
-	if err != nil {
+	if err != nil && !api.IsNotFound(err) {
 		resp.Diagnostics.AddError(
 			"Error deleting notification matcher",
 			fmt.Sprintf("Could not delete notification matcher %s: %s", state.Name.ValueString(), err.Error()),
@@ -661,6 +667,9 @@ func computeMatcherDeletes(plan, state *notificationMatcherResourceModel) []stri
 
 	var deletes []string
 
+	if shouldDeleteListAttr(plan.Targets, state.Targets) {
+		deletes = append(deletes, "target")
+	}
 	if shouldDeleteListAttr(plan.MatchSeverity, state.MatchSeverity) {
 		deletes = append(deletes, "match-severity")
 	}

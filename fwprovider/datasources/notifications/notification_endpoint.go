@@ -55,14 +55,14 @@ type notificationEndpointDataSourceModel struct {
 	Author     types.String `tfsdk:"author"`
 
 	// Gotify/Webhook fields
-	URL    types.String `tfsdk:"url"`
-	Token  types.String `tfsdk:"token"`
-	Secret types.String `tfsdk:"secret"`
+	URL   types.String `tfsdk:"url"`
+	Token types.String `tfsdk:"token"`
 
 	// Webhook fields
-	Body    types.String `tfsdk:"body"`
-	Method  types.String `tfsdk:"method"`
-	Headers types.Map    `tfsdk:"headers"`
+	Body        types.String `tfsdk:"body"`
+	Method      types.String `tfsdk:"method"`
+	Headers     types.Map    `tfsdk:"headers"`
+	SecretNames types.List   `tfsdk:"secret_names"`
 }
 
 // Metadata returns the data source type name.
@@ -163,11 +163,12 @@ func (d *notificationEndpointDataSource) Schema(_ context.Context, _ datasource.
 			},
 
 			// Webhook fields
-			"secret": schema.StringAttribute{
-				Description:         "Webhook secret for HMAC signing (Webhook only).",
-				MarkdownDescription: "Webhook secret for HMAC signing (Webhook only). Note: This is sensitive and will not be returned by the API.",
-				Computed:            true,
-				Sensitive:           true,
+			"secret_names": schema.ListAttribute{
+				Description: "Names of the secrets configured for the webhook (Webhook only).",
+				MarkdownDescription: "Names of the secrets configured for the webhook, referenced in templates as " +
+					"`{{ secrets.<name> }}` (Webhook only). PBS never returns secret values.",
+				ElementType: types.StringType,
+				Computed:    true,
 			},
 			"body": schema.StringAttribute{
 				Description:         "Webhook request body template (Webhook only).",
@@ -279,7 +280,7 @@ func (d *notificationEndpointDataSource) Read(ctx context.Context, req datasourc
 // Helper functions to map API responses to state
 
 func (d *notificationEndpointDataSource) mapGotifyToState(target *notifications.GotifyTarget, state *notificationEndpointDataSourceModel) {
-	state.Disable = boolValueOrNull(target.Disable)
+	state.Disable = boolValueOrFalse(target.Disable)
 	state.Comment = stringValueOrNull(target.Comment)
 	state.Origin = stringValueOrNull(target.Origin)
 	state.URL = stringValueOrNull(target.Server)
@@ -288,13 +289,13 @@ func (d *notificationEndpointDataSource) mapGotifyToState(target *notifications.
 }
 
 func (d *notificationEndpointDataSource) mapSMTPToState(ctx context.Context, target *notifications.SMTPTarget, state *notificationEndpointDataSourceModel, diags *diag.Diagnostics) {
-	state.Disable = boolValueOrNull(target.Disable)
+	state.Disable = boolValueOrFalse(target.Disable)
 	state.Comment = stringValueOrNull(target.Comment)
 	state.Origin = stringValueOrNull(target.Origin)
 	state.Server = stringValueOrNull(target.Server)
-	state.Port = intValueOrNull(target.Port)
+	state.Port = types.Int64Value(int64(smtpPortOrDefault(target.Port, target.Mode)))
 	state.From = stringValueOrNull(target.From)
-	state.Mode = stringValueOrNull(target.Mode)
+	state.Mode = stringValueOrDefault(target.Mode, "tls")
 	state.Username = stringValueOrNull(target.Username)
 	state.Author = stringValueOrNull(target.Author)
 
@@ -317,7 +318,7 @@ func (d *notificationEndpointDataSource) mapSMTPToState(ctx context.Context, tar
 }
 
 func (d *notificationEndpointDataSource) mapSendmailToState(ctx context.Context, target *notifications.SendmailTarget, state *notificationEndpointDataSourceModel, diags *diag.Diagnostics) {
-	state.Disable = boolValueOrNull(target.Disable)
+	state.Disable = boolValueOrFalse(target.Disable)
 	state.Comment = stringValueOrNull(target.Comment)
 	state.Origin = stringValueOrNull(target.Origin)
 	state.From = stringValueOrNull(target.From)
@@ -341,16 +342,22 @@ func (d *notificationEndpointDataSource) mapSendmailToState(ctx context.Context,
 }
 
 func (d *notificationEndpointDataSource) mapWebhookToState(ctx context.Context, target *notifications.WebhookTarget, state *notificationEndpointDataSourceModel, diags *diag.Diagnostics) {
-	state.Disable = boolValueOrNull(target.Disable)
+	state.Disable = boolValueOrFalse(target.Disable)
 	state.Comment = stringValueOrNull(target.Comment)
 	state.Origin = stringValueOrNull(target.Origin)
 	state.URL = stringValueOrNull(target.URL)
 	state.Body = stringValueOrNull(target.Body)
 	state.Method = stringValueOrNull(target.Method)
-	// Secret is not returned by the API for security reasons
-	state.Secret = types.StringNull()
+	// PBS returns secret names only, never their values.
+	if len(target.SecretNames) > 0 {
+		names, d := types.ListValueFrom(ctx, types.StringType, target.SecretNames)
+		diags.Append(d...)
+		state.SecretNames = names
+	} else {
+		state.SecretNames = types.ListNull(types.StringType)
+	}
 
-	if target.Headers != nil && len(target.Headers) > 0 {
+	if len(target.Headers) > 0 {
 		headers, d := types.MapValueFrom(ctx, types.StringType, target.Headers)
 		diags.Append(d...)
 		state.Headers = headers
@@ -368,16 +375,32 @@ func stringValueOrNull(s string) types.String {
 	return types.StringValue(s)
 }
 
-func intValueOrNull(ptr *int) types.Int64 {
-	if ptr == nil {
-		return types.Int64Null()
+// stringValueOrDefault maps an omitted PBS value to its documented default.
+func stringValueOrDefault(s, def string) types.String {
+	if s == "" {
+		return types.StringValue(def)
 	}
-	return types.Int64Value(int64(*ptr))
+	return types.StringValue(s)
 }
 
-func boolValueOrNull(ptr *bool) types.Bool {
-	if ptr == nil {
-		return types.BoolNull()
+// boolValueOrFalse maps an omitted PBS flag to false (PBS omits false values).
+func boolValueOrFalse(ptr *bool) types.Bool {
+	return types.BoolValue(ptr != nil && *ptr)
+}
+
+// smtpPortOrDefault maps an omitted SMTP port to the PBS default for the mode
+// (an omitted mode means "tls").
+func smtpPortOrDefault(port *int, mode string) int {
+	if port != nil {
+		return *port
 	}
-	return types.BoolValue(*ptr)
+
+	switch mode {
+	case "insecure":
+		return 25
+	case "starttls":
+		return 587
+	default:
+		return 465
+	}
 }
