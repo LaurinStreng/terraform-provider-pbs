@@ -199,6 +199,9 @@ resource "pbs_sync_job" "test" {
 				ImportStateId:                        id,
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "id",
+				// digest hashes the whole config file, so parallel tests touching other
+				// objects of the same type change it between apply and import.
+				ImportStateVerifyIgnore: []string{"digest"},
 			},
 			{
 				// Removing optional attributes must clear them on the server.
@@ -429,6 +432,9 @@ resource "pbs_sync_job" "test" {
 				ImportStateId:                        id,
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "id",
+				// digest hashes the whole config file, so parallel tests touching other
+				// objects of the same type change it between apply and import.
+				ImportStateVerifyIgnore: []string{"digest"},
 			},
 			{
 				Config: te.RenderConfig(syncLocalBaseConfig + `

@@ -111,4 +111,6 @@ Resource annotations: `datastore`, `endpoints`, `jobs`, `metrics`, `notification
 ## Release
 
 Tag `vX.Y.Z` on `main` → `.github/workflows/release.yml` runs GoReleaser and
-signs with the `GPG_PRIVATE_KEY`/`PASSPHRASE` secrets.
+signs with the `GPG_PRIVATE_KEY`/`GPG_PASSPHRASE` secrets. Registry
+users pin `~> 1.0`; follow semantic versioning and record changes in
+`CHANGELOG.md` before tagging.
