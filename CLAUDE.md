@@ -55,11 +55,11 @@ func TestAccResourceGotifyNotification(t *testing.T) {
 
 | Tier | Scope | Parallelism |
 |------|-------|-------------|
-| `light` | Config-only objects, no datastores (notifications, metrics, remotes, endpoints, validation) | `-p 8` |
+| `light` | Config-only objects, no datastores (users/tokens/ACLs, notifications, metrics, remotes, endpoints, validation) | `-p 8` |
 | `medium` | Creates datastores or objects that depend on them (datastores, jobs) | `-p 4` |
 | `heavy` | Needs external services/credentials (S3); skipped when credentials are unset | `-p 1` |
 
-Resource annotations: `datastore`, `endpoints`, `jobs`, `metrics`, `notifications`, `remotes`.
+Resource annotations: `access`, `datastore`, `endpoints`, `jobs`, `metrics`, `notifications`, `remotes`.
 
 ### Writing tests
 

@@ -2,12 +2,41 @@
 
 All notable changes to this provider are documented in this file.
 
+## 1.0.2 (2026-11-27)
+
+### Features
+
+- Access control:
+  - `pbs_user`: PBS users (comment, name, email, enable, expire, password for
+    the `pbs` realm; password changes via `/access/password`).
+  - `pbs_api_token`: API tokens; the secret is exposed once as sensitive
+    `value`, and changing `regenerate_trigger` rotates it while keeping the
+    token's ACLs.
+  - `pbs_acl`: single ACL entries (path, user or token, role, `propagate`).
+  - Data sources `pbs_user`, `pbs_users`, `pbs_acls` and `pbs_roles`.
+
+### Bug fixes
+
+- Requests no longer fail when PBS cannot acquire a config lock in time
+  (`Unable to acquire lock ... Interrupted system call`), e.g. while another
+  task or a parallel apply holds it: the provider retries with backoff.
+- Failed PBS tasks now report PBS's error message instead of only an exit code,
+  and tasks that finish with warnings are no longer treated as failures.
+- Datastore creation no longer stacks two retry loops, which could block other
+  datastore operations for minutes.
+- Waiting for a PBS task stops when the operation is cancelled instead of
+  sleeping until the timeout.
+
 ## 1.0.1 (2026-11-27)
 
 First release of the maintained fork of
 [mcfitz2/terraform-provider-pbs](https://github.com/mcfitz2/terraform-provider-pbs),
 published as `laurinstreng/pbs`. Switch existing configurations with
 `terraform state replace-provider registry.terraform.io/mcfitz2/pbs registry.terraform.io/laurinstreng/pbs`.
+
+This release starts the 1.x line of the fork. It still contains one breaking
+change (webhook `secret`, see below) because the previous form never worked
+against PBS; from here on, breaking changes only happen in major releases.
 
 ### Features
 
@@ -35,10 +64,6 @@ published as `laurinstreng/pbs`. Switch existing configurations with
 - `pbs_sync_job`: rate/burst values such as `10MiB` no longer cause
   inconsistent results.
 - Documentation: correct API token format `user@realm!tokenname:secret`.
-- Requests no longer fail when PBS cannot acquire a config lock in time
-  (`Unable to acquire lock ... Interrupted system call`), e.g. while another
-  task or a parallel apply holds it: the provider retries with backoff.
-- Failed PBS tasks now report PBS's error message instead of only an exit code.
 
 ### Breaking changes
 
