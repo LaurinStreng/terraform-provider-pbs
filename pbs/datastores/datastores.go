@@ -386,6 +386,29 @@ func (c *Client) DeleteDatastoreWithOptions(ctx context.Context, name string, de
 		return fmt.Errorf("datastore name is required")
 	}
 
+	// The delete runs as a PBS task that takes the datastore config lock
+	// itself; if another task holds it, the task fails without deleting
+	// anything and can simply be started again.
+	err := c.deleteDatastoreOnce(ctx, name, destroyData)
+	for _, delay := range []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second} {
+		if !api.IsLockTimeout(err) {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return err
+		case <-time.After(delay):
+		}
+
+		err = c.deleteDatastoreOnce(ctx, name, destroyData)
+	}
+
+	return err
+}
+
+func (c *Client) deleteDatastoreOnce(ctx context.Context, name string, destroyData bool) error {
+
 	escapedName := url.PathEscape(name)
 	path := fmt.Sprintf("/config/datastore/%s", escapedName)
 

@@ -125,8 +125,41 @@ type AuthResponse struct {
 	} `json:"data"`
 }
 
-// DoRequest performs an HTTP request to the PBS API
+// lockRetryDelays are the waits between attempts when PBS reports a config
+// lock timeout (about 23s in total, on top of PBS's own lock wait).
+var lockRetryDelays = []time.Duration{1 * time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second, 8 * time.Second}
+
+// DoRequest performs an HTTP request to the PBS API. Requests that fail
+// because PBS could not acquire a config lock in time are retried with
+// backoff; PBS does not apply a request when it cannot take the lock.
 func (c *Client) DoRequest(ctx context.Context, method, apiPath string, body interface{}) (*APIResponse, error) {
+	resp, err := c.doRequest(ctx, method, apiPath, body)
+
+	for _, delay := range lockRetryDelays {
+		if !IsLockTimeout(err) {
+			break
+		}
+
+		tflog.Debug(ctx, "PBS config lock busy, retrying", map[string]interface{}{
+			"method": method,
+			"path":   apiPath,
+			"delay":  delay.String(),
+		})
+
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("%w (giving up: %v)", err, ctx.Err())
+		case <-time.After(delay):
+		}
+
+		resp, err = c.doRequest(ctx, method, apiPath, body)
+	}
+
+	return resp, err
+}
+
+// doRequest performs a single HTTP request to the PBS API.
+func (c *Client) doRequest(ctx context.Context, method, apiPath string, body interface{}) (*APIResponse, error) {
 	u := fmt.Sprintf("%s/api2/json%s", c.endpoint, apiPath)
 
 	if isDebugEnabled() {
@@ -440,8 +473,12 @@ func (c *Client) WaitForTask(ctx context.Context, node, upid string, timeout tim
 			if exitCode == 0 {
 				return nil // Task completed successfully
 			}
-			// Task failed - return detailed error
+			// Task failed - include PBS's error text (exitstatus is the
+			// error message for failed tasks, e.g. a lock timeout).
 			elapsed := time.Since(startTime).Round(time.Second)
+			if msg, ok := status.ExitCode.(string); ok && msg != "" {
+				return fmt.Errorf("task failed after %v: %s", elapsed, msg)
+			}
 			return fmt.Errorf("task failed with exit code %d after %v", exitCode, elapsed)
 		case "running":
 			// Log progress every 10 seconds for long-running tasks (visible with TF_LOG=DEBUG)
