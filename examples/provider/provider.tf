@@ -2,7 +2,7 @@ terraform {
   required_providers {
     pbs = {
       source  = "laurinstreng/pbs"
-      version = "~> 0.1"
+      version = "~> 1.0"
     }
   }
 }
