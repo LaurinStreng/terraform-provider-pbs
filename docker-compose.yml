@@ -27,7 +27,7 @@ services:
     restart: unless-stopped
 
   influxdb:
-    image: influxdb:2.7-alpine
+    image: influxdb:2.10-alpine
     ports:
       - "8086:8086"
     environment:
@@ -39,7 +39,7 @@ services:
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: test-token-for-pbs-provider
 
   influxdb-udp:
-    image: influxdb:1.8
+    image: influxdb:2.10
     ports:
       - "8089:8089/udp"
     environment:
