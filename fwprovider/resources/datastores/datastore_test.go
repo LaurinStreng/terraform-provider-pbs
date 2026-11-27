@@ -113,6 +113,9 @@ resource "pbs_datastore" "test" {
 				ImportStateId:                        name,
 				ImportStateVerify:                    true,
 				ImportStateVerifyIdentifierAttribute: "name",
+				// digest hashes the whole config file, so parallel tests touching other
+				// objects of the same type change it between apply and import.
+				ImportStateVerifyIgnore: []string{"digest"},
 			},
 			{
 				// Changing the path is not supported by PBS and must force replacement.
