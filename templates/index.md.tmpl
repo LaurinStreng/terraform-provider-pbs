@@ -1,0 +1,44 @@
+---
+page_title: "Provider: Proxmox Backup Server"
+description: |-
+  Manage Proxmox Backup Server (PBS) datastores, jobs, remotes, metrics and notifications.
+---
+
+# Proxmox Backup Server Provider
+
+The PBS provider manages [Proxmox Backup Server](https://www.proxmox.com/en/proxmox-backup-server)
+configuration: datastores, S3 endpoints, prune/sync/verify jobs, remotes, metrics servers and
+notification targets and matchers. It is tested against PBS 4.x.
+
+This is a maintained fork of [mcfitz2/terraform-provider-pbs](https://github.com/mcfitz2/terraform-provider-pbs),
+published as `laurinstreng/pbs`.
+
+## Example Usage
+
+{{ tffile "examples/provider/provider.tf" }}
+
+## Authentication
+
+Use either an **API token** (recommended) or **username and password**.
+
+API tokens have the format `user@realm!tokenname:secret`. Create one in the PBS UI under
+*Configuration → Access Control → API Token*, or with
+`proxmox-backup-manager user generate-token terraform@pbs automation`, and grant the token
+enough privileges for the objects you manage (for example the `Admin` role on `/`).
+Token privileges are the intersection of the token's and its user's permissions.
+
+## Environment Variables
+
+All provider settings can be set via environment variables instead of the provider block:
+
+| Variable | Setting |
+|----------|---------|
+| `PBS_ENDPOINT` | `endpoint` |
+| `PBS_API_TOKEN` | `api_token` |
+| `PBS_USERNAME` | `username` |
+| `PBS_PASSWORD` | `password` |
+| `PBS_INSECURE` | `insecure` (`"true"` / `"false"`) |
+
+Values in the provider block take precedence over environment variables.
+
+{{ .SchemaMarkdown | trimspace }}
