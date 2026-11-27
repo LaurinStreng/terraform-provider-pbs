@@ -35,6 +35,10 @@ published as `laurinstreng/pbs`. Switch existing configurations with
 - `pbs_sync_job`: rate/burst values such as `10MiB` no longer cause
   inconsistent results.
 - Documentation: correct API token format `user@realm!tokenname:secret`.
+- Requests no longer fail when PBS cannot acquire a config lock in time
+  (`Unable to acquire lock ... Interrupted system call`), e.g. while another
+  task or a parallel apply holds it: the provider retries with backoff.
+- Failed PBS tasks now report PBS's error message instead of only an exit code.
 
 ### Breaking changes
 

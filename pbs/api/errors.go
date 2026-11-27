@@ -23,3 +23,19 @@ func IsNotFound(err error) bool {
 		strings.Contains(msg, "does not exist") ||
 		strings.Contains(msg, "no such")
 }
+
+// IsLockTimeout reports whether err means PBS could not acquire a config
+// lock in time (e.g. `Unable to acquire lock "/etc/proxmox-backup/.datastore.lck"
+// - Interrupted system call (os error 4)`). PBS gives up after a few seconds
+// when another task or API call holds the lock. The request was not applied,
+// so it is safe to retry.
+func IsLockTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+
+	return strings.Contains(msg, "unable to acquire lock") ||
+		(strings.Contains(msg, ".lck") && strings.Contains(msg, "interrupted system call"))
+}
