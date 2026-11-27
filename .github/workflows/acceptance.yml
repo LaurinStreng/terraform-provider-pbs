@@ -1,0 +1,81 @@
+name: Acceptance tests
+
+# Runs ./testacc against a PBS container (community image, see docker-compose.yml).
+# Heavy-tier tests (S3) run only when the PBS_TEST_S3_* secrets are configured.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Tiers to run (light, medium, heavy, all — comma-separated)"
+        default: "light,medium"
+  pull_request:
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - "docker-compose.yml"
+      - "testacc"
+      - ".github/workflows/acceptance.yml"
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  testacc:
+    name: Acceptance (${{ inputs.tier || 'light,medium' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Start PBS test stack
+        run: docker compose up -d
+
+      - name: Wait for PBS API
+        run: |
+          for i in $(seq 1 60); do
+            if curl -skf -o /dev/null https://localhost:8007/api2/json/version; then
+              echo "PBS is up"; exit 0
+            fi
+            # /version requires auth on some releases; a 401 also means the API is up
+            code=$(curl -sk -o /dev/null -w '%{http_code}' https://localhost:8007/api2/json/version || true)
+            if [ "$code" = "401" ]; then echo "PBS is up"; exit 0; fi
+            sleep 5
+          done
+          docker compose logs pbs
+          exit 1
+
+      - name: Run acceptance tests
+        env:
+          PBS_TEST_S3_ENDPOINT: ${{ secrets.PBS_TEST_S3_ENDPOINT }}
+          PBS_TEST_S3_REGION: ${{ secrets.PBS_TEST_S3_REGION }}
+          PBS_TEST_S3_ACCESS_KEY: ${{ secrets.PBS_TEST_S3_ACCESS_KEY }}
+          PBS_TEST_S3_SECRET_KEY: ${{ secrets.PBS_TEST_S3_SECRET_KEY }}
+          PBS_TEST_S3_BUCKET: ${{ secrets.PBS_TEST_S3_BUCKET }}
+        run: |
+          cp testacc.env.example testacc.env
+          ./testacc --tier "${{ inputs.tier || 'light,medium' }}" 2>&1 | grep -v '\[PBS-DEBUG\]'
+          exit "${PIPESTATUS[0]}"
+
+      - name: PBS logs
+        if: failure()
+        run: docker compose logs pbs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
