@@ -489,3 +489,19 @@ func BuildPath(segments ...string) string {
 	}
 	return "/" + path.Join(cleanSegments...)
 }
+
+// UsesAPIToken reports whether the client authenticates with an API token.
+func (c *Client) UsesAPIToken() bool {
+	return c.apiToken != ""
+}
+
+// Username returns the user the client logs in as (empty for API tokens).
+func (c *Client) Username() string {
+	return c.username
+}
+
+// LoginPassword returns the password the client logs in with. Some PBS
+// endpoints (e.g. /access/password) require it as confirmation.
+func (c *Client) LoginPassword() string {
+	return c.password
+}

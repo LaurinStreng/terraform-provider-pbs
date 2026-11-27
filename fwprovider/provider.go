@@ -25,12 +25,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/config"
+	datasourcesaccess "github.com/LaurinStreng/terraform-provider-pbs/fwprovider/datasources/access"
 	datasourcesdatastores "github.com/LaurinStreng/terraform-provider-pbs/fwprovider/datasources/datastores"
 	datasourcesendpoints "github.com/LaurinStreng/terraform-provider-pbs/fwprovider/datasources/endpoints"
 	datasourcesjobs "github.com/LaurinStreng/terraform-provider-pbs/fwprovider/datasources/jobs"
 	datasourcesmetrics "github.com/LaurinStreng/terraform-provider-pbs/fwprovider/datasources/metrics"
 	datasourcesnotifications "github.com/LaurinStreng/terraform-provider-pbs/fwprovider/datasources/notifications"
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/datasources/remotes"
+	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/resources/access"
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/resources/datastores"
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/resources/endpoints"
 	"github.com/LaurinStreng/terraform-provider-pbs/fwprovider/resources/jobs"
@@ -265,6 +267,11 @@ func (p *pbsProvider) DataSources(_ context.Context) []func() datasource.DataSou
 		datasourcesnotifications.NewNotificationEndpointsDataSource,
 		datasourcesnotifications.NewNotificationMatcherDataSource,
 		datasourcesnotifications.NewNotificationMatchersDataSource,
+		// Access
+		datasourcesaccess.NewUserDataSource,
+		datasourcesaccess.NewUsersDataSource,
+		datasourcesaccess.NewACLsDataSource,
+		datasourcesaccess.NewRolesDataSource,
 	}
 }
 
@@ -290,5 +297,9 @@ func (p *pbsProvider) Resources(_ context.Context) []func() resource.Resource {
 		jobs.NewPruneJobResource,
 		jobs.NewSyncJobResource,
 		jobs.NewVerifyJobResource,
+		// Access
+		access.NewUserResource,
+		access.NewAPITokenResource,
+		access.NewACLResource,
 	}
 }
