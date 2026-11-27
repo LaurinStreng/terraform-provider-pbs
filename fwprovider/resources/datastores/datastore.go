@@ -472,7 +472,7 @@ func (r *datastoreResource) Create(ctx context.Context, req resource.CreateReque
 	// Lock only for the create operation to prevent PBS lock contention
 	// Don't hold the lock during the post-create retries
 	datastoreMutex.Lock()
-	tflog.Debug(ctx, "Mutex acquired, calling createDatastoreWithRetry", map[string]any{
+	tflog.Debug(ctx, "Mutex acquired, calling createDatastore", map[string]any{
 		"name": plan.Name.ValueString(),
 	})
 
@@ -482,7 +482,7 @@ func (r *datastoreResource) Create(ctx context.Context, req resource.CreateReque
 		"timestamp": startCreate.Format(time.RFC3339Nano),
 	})
 
-	err = r.createDatastoreWithRetry(ctx, datastore)
+	err = r.createDatastore(ctx, datastore)
 
 	endCreate := time.Now()
 	tflog.Info(ctx, "⏱️ TIMING: CreateDatastore completed", map[string]any{
@@ -1476,74 +1476,44 @@ func (r *datastoreResource) datastoreToState(ds *datastores.Datastore, state *da
 	return nil
 }
 
-// createDatastoreWithRetry attempts to create a datastore with retry logic for PBS lock contention
-func (r *datastoreResource) createDatastoreWithRetry(ctx context.Context, datastore *datastores.Datastore) error {
-	maxRetries := 3
-	baseDelay := 2 * time.Second
+// createDatastore creates the datastore and logs details of failed PBS tasks.
+func (r *datastoreResource) createDatastore(ctx context.Context, datastore *datastores.Datastore) error {
+	// Lock timeouts are retried by the API client (api.DoRequest); retrying
+	// here as well would multiply the attempts while holding datastoreMutex.
+	err := r.client.Datastores.CreateDatastore(ctx, datastore)
+	if err == nil {
+		return nil
+	}
 
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		err := r.client.Datastores.CreateDatastore(ctx, datastore)
-		if err == nil {
-			return nil
-		}
-
-		// Check if this is a lock contention error or task failure
-		errorMsg := err.Error()
-
-		// Log detailed information for task failures
-		if strings.Contains(errorMsg, "task failed") {
-			// Try to extract UPID from error message
-			// PBS task errors often contain format like "UPID:node:00001234:..."
-			upid := "unknown"
-			if strings.Contains(errorMsg, "UPID:") {
-				// Extract UPID from error message
-				parts := strings.Split(errorMsg, "UPID:")
-				if len(parts) > 1 {
-					upidPart := strings.Split(parts[1], " ")[0]
-					if upidPart != "" {
-						upid = "UPID:" + upidPart
-					}
-				}
-			}
-
-			// Check for known compatibility issues
-			isBackblazeCompatIssue := strings.Contains(errorMsg, "501") &&
-				strings.Contains(errorMsg, "Not Implemented") &&
-				strings.Contains(errorMsg, "access time safety check")
-
-			logLevel := "Error"
-			if isBackblazeCompatIssue {
-				logLevel = "Warn" // Known issue, not provider error
-			}
-
-			tflog.Error(ctx, fmt.Sprintf("PBS task failed (%s)", logLevel), map[string]any{
-				"error":                     errorMsg,
-				"upid":                      upid,
-				"attempt":                   attempt,
-				"datastore":                 datastore.Name,
-				"known_compatibility_issue": isBackblazeCompatIssue,
-			})
-
-			// For known Backblaze compatibility issues, don't retry
-			if isBackblazeCompatIssue {
-				return fmt.Errorf("known compatibility issue: %s", errorMsg)
-			}
-		}
-
-		isLockError := strings.Contains(errorMsg, "Unable to acquire lock") ||
-			strings.Contains(errorMsg, "Interrupted system call") ||
-			strings.Contains(errorMsg, ".datastore.lck")
-
-		if isLockError && attempt < maxRetries {
-			// Exponential backoff with jitter
-			delay := baseDelay * time.Duration(attempt)
-			time.Sleep(delay)
-			continue
-		}
-
-		// Not a lock error or final attempt - return error
+	errorMsg := err.Error()
+	if !strings.Contains(errorMsg, "task failed") {
 		return err
 	}
 
-	return fmt.Errorf("failed to create datastore after %d attempts", maxRetries)
+	// PBS task errors often contain the task ID ("UPID:node:...").
+	upid := "unknown"
+	if parts := strings.SplitN(errorMsg, "UPID:", 2); len(parts) == 2 {
+		if upidPart := strings.Split(parts[1], " ")[0]; upidPart != "" {
+			upid = "UPID:" + upidPart
+		}
+	}
+
+	// Some S3 providers (e.g. Backblaze) don't implement what PBS's access
+	// time safety check needs.
+	isBackblazeCompatIssue := strings.Contains(errorMsg, "501") &&
+		strings.Contains(errorMsg, "Not Implemented") &&
+		strings.Contains(errorMsg, "access time safety check")
+
+	tflog.Error(ctx, "PBS datastore creation task failed", map[string]any{
+		"error":                     errorMsg,
+		"upid":                      upid,
+		"datastore":                 datastore.Name,
+		"known_compatibility_issue": isBackblazeCompatIssue,
+	})
+
+	if isBackblazeCompatIssue {
+		return fmt.Errorf("known compatibility issue: %s", errorMsg)
+	}
+
+	return err
 }

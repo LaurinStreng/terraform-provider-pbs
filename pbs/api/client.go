@@ -148,7 +148,7 @@ func (c *Client) DoRequest(ctx context.Context, method, apiPath string, body int
 
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("%w (giving up: %v)", err, ctx.Err())
+			return nil, fmt.Errorf("%w (giving up: %w)", err, ctx.Err())
 		case <-time.After(delay):
 		}
 
@@ -377,49 +377,28 @@ type TaskStatus struct {
 	Node      string      `json:"node"`
 }
 
-// GetExitCode safely extracts the exit code as an integer
+// GetExitCode returns 0 when the task succeeded and a non-zero value when it
+// failed. PBS reports the exit status as a string: "OK" or "WARNINGS: <n>"
+// for success, otherwise the error message. Numeric values are passed through.
 func (ts *TaskStatus) GetExitCode() int {
-	// Parse exit code from PBS task status
-
-	if ts.ExitCode == nil {
-		// No exit code provided
-		// If task is stopped and no exit code, assume success
+	switch v := ts.ExitCode.(type) {
+	case nil:
 		if ts.Status == "stopped" {
 			return 0
 		}
-		return -1 // Unknown exit code
-	}
-
-	switch v := ts.ExitCode.(type) {
+		return -1
 	case int:
-		// Exit code as integer
 		return v
 	case float64:
-		code := int(v)
-		// Exit code as float64, converted to int
-		return code
+		return int(v)
 	case string:
-		// Exit code as string
-		// Try to parse string as int
-		if v == "" {
-			// Empty string for stopped task likely means success
-			if ts.Status == "stopped" {
-				return 0
-			}
+		switch {
+		case v == "" && ts.Status == "stopped", v == "OK", strings.HasPrefix(v, "WARNINGS:"):
+			return 0
+		default:
 			return -1
 		}
-		// For PBS, "OK" often means success (exit code 0)
-		if v == "OK" {
-			return 0
-		}
-		// Try to parse as number
-		var code int
-		if _, err := fmt.Sscanf(v, "%d", &code); err == nil {
-			return code
-		}
-		return -1
 	default:
-		// Unknown exit code type
 		return -1
 	}
 }
@@ -486,8 +465,11 @@ func (c *Client) WaitForTask(ctx context.Context, node, upid string, timeout tim
 				lastLog = time.Now()
 				// Task still running, will continue polling
 			}
-			// Continue waiting
-			time.Sleep(2 * time.Second)
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("waiting for task %s: %w", upid, ctx.Err())
+			case <-time.After(2 * time.Second):
+			}
 		default:
 			return fmt.Errorf("unknown task status: %s", status.Status)
 		}
